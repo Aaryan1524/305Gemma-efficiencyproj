@@ -8,6 +8,7 @@ gates the capture pipeline below it.
 import hashlib
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime
 
@@ -118,6 +119,12 @@ def _duration(start, end):
 def main():
     """Session state machine: poll idle time, open/close sessions, drive capture_tick()."""
     session = None  # {"start": datetime} while open, else None
+
+    # Line-buffer so status prints appear live even when piped (e.g. tee during a demo).
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
 
     os.makedirs(CAPTURE_DIR, exist_ok=True)
     print(f"FocusLedger session manager starting (DEV_MODE={DEV_MODE})")
