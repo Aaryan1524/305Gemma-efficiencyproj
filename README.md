@@ -72,6 +72,19 @@ ollama serve   # in a separate terminal if not already running
 
 ## Usage
 
+**The notch is home.** FocusLedger lives in a little black tab under your MacBook's notch:
+
+```bash
+python notch.py                  # the notch companion (recommended)
+python notch.py --install-login  # greet you at every login (LaunchAgent)
+```
+
+First open of the day it expands and asks your goals; after that it collapses to a pill,
+tracks quietly, and shows live status when you click it. **End my day** flushes the last
+checkpoint and opens the WHOOP-style report — Focus Score ring, on-goal time, drift.
+
+Or run the pieces directly:
+
 ```bash
 # Track a real work session (asks your goals, then watches until Ctrl-C)
 python focusledger.py
@@ -91,6 +104,7 @@ Dev mode shortens every interval for testing — `FL_DEV=1 python focusledger.py
 
 | File | Role |
 |---|---|
+| [`notch.py`](notch.py) | Notch companion — goals in the morning, live status, end-of-day |
 | [`focusledger.py`](focusledger.py) | Session manager + capture loop (entry point) |
 | [`vision_ocr.py`](vision_ocr.py) | Apple Vision OCR; image deleted right after |
 | [`gemma.py`](gemma.py) | Ollama client + both prompts, both call sites |
