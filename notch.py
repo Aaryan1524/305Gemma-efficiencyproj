@@ -32,6 +32,7 @@ import focusledger as fl
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PYTHON = sys.executable
+DICTATE = os.path.join(BASE, "dictate")   # Swift speech-to-text helper
 
 # The window itself is a fixed, transparent stage; only the black shape
 # inside it animates. That is what makes the motion buttery — we never
@@ -293,6 +294,8 @@ class App(AppKit.NSObject):
 
     def setExpanded_(self, on):
         self.expanded = bool(on)
+        if not self.expanded and getattr(self, "dictating", False):
+            self._stop_dictation()  # never keep the mic open behind a collapsed panel
         self.apply_state(animate=True)
 
     @objc.python_method
@@ -331,7 +334,7 @@ class App(AppKit.NSObject):
             self.content.addSubview_(_label("What are your goals today?",
                                             AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
                                             _font(13, "semibold"), INK))
-            self.content.addSubview_(_label("One line. Specific beats noble.",
+            self.content.addSubview_(_label("Say them or type them. Specific beats noble.",
                                             AppKit.NSMakeRect(pad, top - 76, W - 2 * pad, 14),
                                             _font(11, "regular"), MUTED))
             self.field = AppKit.NSTextField.alloc().initWithFrame_(
@@ -348,6 +351,9 @@ class App(AppKit.NSObject):
             self.field.setPlaceholderString_("Ship the demo · study calc · keep Slack short")
             self.field.setTarget_(self); self.field.setAction_("startDay:")
             self.content.addSubview_(self.field)
+            self.micBtn = self._pill(self._mic_label(), "speakGoals:", PILL_GREY,
+                                     AppKit.NSMakeRect(pad, 18, 124, 28))
+            self.content.addSubview_(self.micBtn)
             self.content.addSubview_(self._pill("Start day", "startDay:", PILL_GREEN,
                                                 AppKit.NSMakeRect(W - pad - 96, 18, 96, 28)))
             self.panel.makeKeyAndOrderFront_(None)
@@ -402,7 +408,97 @@ class App(AppKit.NSObject):
             btn.setTarget_(self); btn.setAction_(action)
         return btn
 
+    @objc.python_method
+    def _pill_title(self, btn, title):
+        """Retitle an existing pill (the mic pill flips label while listening)."""
+        attrs = {
+            AppKit.NSFontAttributeName: _font(12, "semibold"),
+            AppKit.NSForegroundColorAttributeName: INK,
+        }
+        btn.setAttributedTitle_(
+            AppKit.NSAttributedString.alloc().initWithString_attributes_(title, attrs))
+
     # ---------- actions ----------
+
+    # ---------- voice goals ----------
+    #
+    # `dictate` is a tiny Swift helper (see dictate.swift) that transcribes
+    # on-device via Speech.framework. It has to be a separate binary: TCC
+    # kills any process touching the mic without an Info.plist usage
+    # description, and a bare `python` has none. It streams partials on
+    # stderr and prints the final line on stdout.
+
+    @objc.python_method
+    def _mic_label(self):
+        return "◉  Listening…" if getattr(self, "dictating", False) else "🎙  Speak goals"
+
+    def speakGoals_(self, sender):
+        if getattr(self, "dictating", False):
+            self._stop_dictation()
+            return
+        if not os.path.exists(DICTATE):
+            self.field.setStringValue_("")
+            self.field.setPlaceholderString_("dictate helper not built — see dictate.swift")
+            return
+        self.dictating = True
+        self._pill_title(self.micBtn, self._mic_label())
+        threading.Thread(target=self._runDictation, daemon=True).start()
+
+    @objc.python_method
+    def _runDictation(self):
+        """Run the helper, streaming partial transcripts into the field as they land."""
+        try:
+            proc = subprocess.Popen([DICTATE], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, cwd=BASE)
+        except OSError as e:
+            self._on_main(lambda: self._end_dictation(f"could not start dictate ({e})"))
+            return
+        self.dictateProc = proc
+        for line in proc.stderr:
+            line = line.strip()
+            if line.startswith("…"):
+                self._on_main(self._apply_transcript, line.lstrip("… ").strip())
+            elif line.startswith("ERR:"):
+                self._on_main(self._end_dictation, line[4:].strip())
+        final = (proc.stdout.read() or "").strip()
+        proc.wait()
+        self.dictateProc = None
+        if final:
+            self._on_main(self._apply_transcript, final)
+        self._on_main(self._end_dictation, None if final else "didn't catch that — try again")
+
+    @objc.python_method
+    def _on_main(self, fn, *args):
+        """Helper callbacks arrive on a reader thread; AppKit must be touched on main."""
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(lambda: fn(*args))
+
+    @objc.python_method
+    def _apply_transcript(self, text):
+        # rebuild() may have torn the field down while we were listening.
+        f = getattr(self, "field", None)
+        if f is not None and f.superview() is not None:
+            f.setStringValue_(text)
+
+    @objc.python_method
+    def _end_dictation(self, error):
+        self.dictating = False
+        btn = getattr(self, "micBtn", None)
+        if btn is not None and btn.superview() is not None:
+            self._pill_title(btn, self._mic_label())
+        f = getattr(self, "field", None)
+        if error and f is not None and f.superview() is not None and not f.stringValue().strip():
+            f.setPlaceholderString_(error)
+
+    @objc.python_method
+    def _stop_dictation(self):
+        """Stop listening — on button re-press, or when the panel collapses."""
+        proc = getattr(self, "dictateProc", None)
+        if proc is not None:
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+        self._end_dictation(None)
 
     def startDay_(self, sender):
         goals = self.field.stringValue().strip()

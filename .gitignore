@@ -13,3 +13,6 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Compiled dictation helper (rebuild: see header of dictate.swift)
+dictate
