@@ -45,17 +45,45 @@ SPRING_DAMPING = 2 * 0.77 * math.sqrt(SPRING_STIFFNESS)  # ≈ 21
 SPRING_DURATION = 0.8
 
 INK = AppKit.NSColor.whiteColor()
-MUTED = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.62, 1.0)
-GREEN = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.13, 0.63, 0.42, 1.0)
+MUTED = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.60, 1.0)
+FAINT = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.38, 1.0)
+GREEN = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.19, 0.78, 0.51, 1.0)
+PILL_GREY = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.16, 1.0)
+PILL_GREEN = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.11, 0.52, 0.34, 1.0)
+FIELD_BG = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.11, 1.0)
+
+_WEIGHTS = {
+    "regular": AppKit.NSFontWeightRegular,
+    "medium": AppKit.NSFontWeightMedium,
+    "semibold": AppKit.NSFontWeightSemibold,
+    "bold": AppKit.NSFontWeightBold,
+}
 
 
-def _label(text, size, bold, color, frame):
+def _font(size, weight="regular", rounded=False, mono=False):
+    """System SF Pro; `rounded` swaps in SF Rounded, `mono` uses tabular digits
+    (the live-timer look from the reference gallery)."""
+    w = _WEIGHTS[weight]
+    f = (AppKit.NSFont.monospacedDigitSystemFontOfSize_weight_(size, w)
+         if mono else AppKit.NSFont.systemFontOfSize_weight_(size, w))
+    if rounded:
+        try:
+            d = f.fontDescriptor().fontDescriptorWithDesign_(
+                AppKit.NSFontDescriptorSystemDesignRounded)
+            rf = AppKit.NSFont.fontWithDescriptor_size_(d, size)
+            if rf is not None:
+                f = rf
+        except AttributeError:
+            pass
+    return f
+
+
+def _label(text, frame, font, color):
     lb = AppKit.NSTextField.alloc().initWithFrame_(frame)
     lb.setStringValue_(text)
     lb.setBezeled_(False); lb.setDrawsBackground_(False)
     lb.setEditable_(False); lb.setSelectable_(False)
-    weight = AppKit.NSFontWeightBold if bold else AppKit.NSFontWeightRegular
-    lb.setFont_(AppKit.NSFont.systemFontOfSize_weight_(size, weight))
+    lb.setFont_(font)
     lb.setTextColor_(color)
     return lb
 
@@ -156,11 +184,18 @@ class App(AppKit.NSObject):
         self.shape.setShadowOffset_(AppKit.NSMakeSize(0, -5))
         self.root.layer().addSublayer_(self.shape)
 
-        # Status dot living on the right wing of the collapsed notch.
+        # Live-activity wings: status dot on the left, session timer on the
+        # right — the reference gallery's "Charging … 67%" layout.
         self.dot = Quartz.CALayer.layer()
         self.dot.setBackgroundColor_(MUTED.CGColor())
         self.dot.setCornerRadius_(3.5)
         self.root.layer().addSublayer_(self.dot)
+
+        self.timeLabel = _label("", AppKit.NSMakeRect(0, 0, 10, 10),
+                                _font(11.5, "semibold", rounded=True, mono=True), GREEN)
+        self.timeLabel.setAlignment_(AppKit.NSTextAlignmentRight)
+        self.root.addSubview_(self.timeLabel)
+        self.session_start = None
 
         # Content sits inside the expanded shape, below the menu-bar band
         # (anything inside the band hides behind the physical notch).
@@ -195,10 +230,11 @@ class App(AppKit.NSObject):
     def shape_rect(self, expanded):
         """Shape bounds in window coords (bottom-left origin, top edge = FRAME_H)."""
         if expanded:
-            w, h = 470, self.mb + 240
+            w, h = 440, self.mb + 220
         else:
-            # 14px chin below the menu-bar band: the visible, clickable lip.
-            w, h = self.notch_w + 96, self.mb + 14
+            # Live-activity bar: wings wide enough for the dot and the session
+            # timer, a slim chin below the menu-bar band for clicks.
+            w, h = self.notch_w + 150, self.mb + 12
         x0 = (FRAME_W - w) / 2.0
         return AppKit.NSMakeRect(x0, FRAME_H - h, w, h)
 
@@ -216,7 +252,7 @@ class App(AppKit.NSObject):
     @objc.python_method
     def apply_state(self, animate=True):
         r = self.shape_rect(self.expanded)
-        tr, br = (10.0, 24.0) if self.expanded else (8.0, 11.0)
+        tr, br = (12.0, 26.0) if self.expanded else (9.0, 12.0)
         new_path = notch_path(r.origin.x, r.origin.x + r.size.width,
                               FRAME_H, r.origin.y, tr, br)
         old_path = self.shape.path()
@@ -225,15 +261,21 @@ class App(AppKit.NSObject):
             self.shape.addAnimation_forKey_(
                 self._spring("path", old_path, new_path), "path")
 
-        # Wing dot: visible only when collapsed.
+        # Wing content: dot on the left wing, timer on the right — collapsed only.
         dr = self.shape_rect(False)
-        dot_frame = AppKit.NSMakeRect(
-            dr.origin.x + dr.size.width - 26, FRAME_H - self.mb / 2.0 - 3.5, 7, 7)
+        wing = (dr.size.width - self.notch_w) / 2.0
+        band_mid = FRAME_H - self.mb / 2.0
+        dot_frame = AppKit.NSMakeRect(dr.origin.x + wing / 2.0 - 3.5, band_mid - 3.5, 7, 7)
         Quartz.CATransaction.begin()
         Quartz.CATransaction.setDisableActions_(True)
         self.dot.setFrame_(dot_frame)
         Quartz.CATransaction.commit()
         self.dot.setOpacity_(0.0 if self.expanded else 1.0)
+
+        notch_right = dr.origin.x + dr.size.width - wing
+        self.timeLabel.setFrame_(AppKit.NSMakeRect(
+            notch_right + 4, band_mid - 8, wing - 20, 16))
+        self.timeLabel.setAlphaValue_(0.0 if self.expanded else 1.0)
 
         self.root.hotRect = r
         self.content.setFrame_(self.shape_rect(True))
@@ -272,60 +314,90 @@ class App(AppKit.NSObject):
 
         H = self.content.frame().size.height
         W = self.content.frame().size.width
-        top = H - self.mb - 6   # stay clear of the physical notch band
-        pad = 26
+        top = H - self.mb - 10   # stay clear of the physical notch band
+        pad = 24
 
-        self.content.addSubview_(_label("Focus", 15, True, INK, AppKit.NSMakeRect(pad, top - 28, 60, 20)))
-        self.content.addSubview_(_label("●", 11, False, GREEN, AppKit.NSMakeRect(pad + 43, top - 26, 14, 16)))
-        self.content.addSubview_(_label("Ledger", 15, True, INK, AppKit.NSMakeRect(pad + 54, top - 28, 70, 20)))
-        self.content.addSubview_(_label("100% local · zero network", 10, False, MUTED,
-                                        AppKit.NSMakeRect(W - 172, top - 25, 150, 14)))
+        # Header row: green dot glyph + semibold wordmark, faint tagline right.
+        self.content.addSubview_(_label("●", AppKit.NSMakeRect(pad, top - 24, 14, 16),
+                                        _font(10, "regular"), GREEN))
+        self.content.addSubview_(_label("FocusLedger", AppKit.NSMakeRect(pad + 17, top - 26, 120, 18),
+                                        _font(14, "semibold", rounded=True), INK))
+        tag = _label("100% local", AppKit.NSMakeRect(W - pad - 90, top - 24, 90, 14),
+                     _font(10, "medium"), FAINT)
+        tag.setAlignment_(AppKit.NSTextAlignmentRight)
+        self.content.addSubview_(tag)
 
         if self.tracker is None and self.goals is None and not self.day_done:
-            self.content.addSubview_(_label("What are your goals today?", 14, True, INK,
-                                            AppKit.NSMakeRect(pad, top - 68, W - 2 * pad, 20)))
+            self.content.addSubview_(_label("What are your goals today?",
+                                            AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
+                                            _font(13, "semibold"), INK))
+            self.content.addSubview_(_label("One line. Specific beats noble.",
+                                            AppKit.NSMakeRect(pad, top - 76, W - 2 * pad, 14),
+                                            _font(11, "regular"), MUTED))
             self.field = AppKit.NSTextField.alloc().initWithFrame_(
-                AppKit.NSMakeRect(pad, top - 104, W - 2 * pad, 26))
-            self.field.setFont_(AppKit.NSFont.systemFontOfSize_(13))
-            self.field.setPlaceholderString_("Ship the demo; study calc; keep Slack short")
+                AppKit.NSMakeRect(pad, top - 112, W - 2 * pad, 28))
+            self.field.setFont_(_font(12.5, "regular"))
+            self.field.setTextColor_(INK)
+            self.field.setBezeled_(False)
+            self.field.setWantsLayer_(True)
+            self.field.layer().setBackgroundColor_(FIELD_BG.CGColor())
+            self.field.layer().setCornerRadius_(8.0)
+            self.field.setFocusRingType_(AppKit.NSFocusRingTypeNone)
+            self.field.setBackgroundColor_(FIELD_BG)
+            self.field.setDrawsBackground_(True)
+            self.field.setPlaceholderString_("Ship the demo · study calc · keep Slack short")
             self.field.setTarget_(self); self.field.setAction_("startDay:")
             self.content.addSubview_(self.field)
-            btn = self._button("Start day", "startDay:", AppKit.NSMakeRect(pad, top - 148, 110, 30))
-            self.content.addSubview_(btn)
+            self.content.addSubview_(self._pill("Start day", "startDay:", PILL_GREEN,
+                                                AppKit.NSMakeRect(W - pad - 96, 18, 96, 28)))
             self.panel.makeKeyAndOrderFront_(None)
             AppKit.NSApp.activateIgnoringOtherApps_(True)
             self.panel.makeFirstResponder_(self.field)
         elif self.tracker is not None:
-            self.sessLabel = _label(self.status["session"], 13, True, GREEN,
-                                    AppKit.NSMakeRect(pad, top - 62, W - 2 * pad, 18))
-            self.lineLabel = _label(self.status["line"], 12, False, MUTED,
-                                    AppKit.NSMakeRect(pad, top - 86, W - 2 * pad, 18))
+            self.sessLabel = _label(self.status["session"],
+                                    AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
+                                    _font(12.5, "semibold", mono=True), GREEN)
+            self.lineLabel = _label(self.status["line"],
+                                    AppKit.NSMakeRect(pad, top - 78, W - 2 * pad, 15),
+                                    _font(11, "regular"), MUTED)
             self.lineLabel.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
             self.content.addSubview_(self.sessLabel)
             self.content.addSubview_(self.lineLabel)
-            goals = _label("Goals: " + (self.goals or ""), 11, False, MUTED,
-                           AppKit.NSMakeRect(pad, top - 116, W - 2 * pad, 26))
+            goals = _label("Goals · " + (self.goals or ""),
+                           AppKit.NSMakeRect(pad, top - 100, W - 2 * pad, 15),
+                           _font(11, "regular"), FAINT)
             goals.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
             self.content.addSubview_(goals)
-            self.content.addSubview_(self._button("View report", "viewReport:",
-                                                  AppKit.NSMakeRect(pad, 18, 110, 30)))
-            self.content.addSubview_(self._button("End my day", "endDay:",
-                                                  AppKit.NSMakeRect(pad + 122, 18, 110, 30)))
+            self.content.addSubview_(self._pill("View report", "viewReport:", PILL_GREY,
+                                                AppKit.NSMakeRect(W - pad - 208, 18, 100, 28)))
+            self.content.addSubview_(self._pill("End my day", "endDay:", PILL_GREEN,
+                                                AppKit.NSMakeRect(W - pad - 100, 18, 100, 28)))
         else:
-            msg = "Day closed — report is open. 🎉" if self.day_done else "Not tracking."
-            self.content.addSubview_(_label(msg, 13, True, INK,
-                                            AppKit.NSMakeRect(pad, top - 66, W - 2 * pad, 20)))
-            self.content.addSubview_(self._button("View report", "viewReport:",
-                                                  AppKit.NSMakeRect(pad, 18, 110, 30)))
-            q = self._button("Quit", None, AppKit.NSMakeRect(pad + 122, 18, 80, 30))
+            msg = "Day closed — report is open." if self.day_done else "Not tracking."
+            self.content.addSubview_(_label(msg, AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
+                                            _font(13, "semibold"), INK))
+            self.content.addSubview_(self._pill("View report", "viewReport:", PILL_GREY,
+                                                AppKit.NSMakeRect(W - pad - 208, 18, 100, 28)))
+            q = self._pill("Quit", None, PILL_GREY,
+                           AppKit.NSMakeRect(W - pad - 100, 18, 100, 28))
             q.setTarget_(AppKit.NSApp); q.setAction_("terminate:")
             self.content.addSubview_(q)
 
     @objc.python_method
-    def _button(self, title, action, frame):
+    def _pill(self, title, action, bg, frame):
+        """Rounded pill button, reference-gallery style: borderless, layer-
+        backed capsule with a semibold white label."""
         btn = AppKit.NSButton.alloc().initWithFrame_(frame)
-        btn.setTitle_(title)
-        btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
+        btn.setBordered_(False)
+        btn.setWantsLayer_(True)
+        btn.layer().setBackgroundColor_(bg.CGColor())
+        btn.layer().setCornerRadius_(frame.size.height / 2.0)
+        attrs = {
+            AppKit.NSFontAttributeName: _font(12, "semibold"),
+            AppKit.NSForegroundColorAttributeName: INK,
+        }
+        btn.setAttributedTitle_(
+            AppKit.NSAttributedString.alloc().initWithString_attributes_(title, attrs))
         if action:
             btn.setTarget_(self); btn.setAction_(action)
         return btn
@@ -350,12 +422,17 @@ class App(AppKit.NSObject):
         self.dot.setBackgroundColor_(GREEN.CGColor())
 
     def _reader(self):
+        from datetime import datetime
         for line in self.tracker.stdout:
             line = line.strip()
             if not line:
                 continue
-            if line.startswith(("▶", "■")):
+            if line.startswith("▶"):
                 self.status["session"] = line
+                self.session_start = datetime.now()
+            elif line.startswith("■"):
+                self.status["session"] = line
+                self.session_start = None
             elif line.startswith(("👁", "📒", "🧠", "⛔")):
                 self.status["line"] = line
 
@@ -397,7 +474,16 @@ class App(AppKit.NSObject):
         AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
 
     def tick_(self, timer):
-        if self.expanded and self.tracker is not None:
+        from datetime import datetime
+        if not self.expanded:
+            if self.session_start is not None:
+                mins = int((datetime.now() - self.session_start).total_seconds() // 60)
+                self.timeLabel.setStringValue_(f"{mins // 60}:{mins % 60:02d}")
+                self.timeLabel.setTextColor_(GREEN)
+            else:
+                self.timeLabel.setStringValue_("–" if self.tracker else "")
+                self.timeLabel.setTextColor_(FAINT)
+        elif self.tracker is not None:
             if getattr(self, "sessLabel", None):
                 self.sessLabel.setStringValue_(self.status["session"])
             if getattr(self, "lineLabel", None):
