@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from AppKit import NSWorkspace
 import mss
@@ -178,15 +178,23 @@ def prompt_goals():
     return goals
 
 
-def run_checkpoint(goals, reason=""):
+def run_checkpoint(goals, since=None, until=None, reason=""):
     """Judge the buffered samples against today's goals, append the verdict, clear the buffer.
 
     This is Gemma call site #1: a 30-minute block of messy screen text becomes one
     structured verdict. After this the raw text is discarded — only the verdict persists.
+
+    `since`/`until` bound the block in wall-clock time (minutes = until − since), not a
+    per-sample estimate — so change-gating (skipped identical frames) doesn't make calm
+    focused work (reading, watching a lecture) look shorter, and the idle stretch before
+    a session closes isn't counted as work.
     """
     if not BUFFER:
         return
     n = len(BUFFER)
+    now = datetime.now()
+    end = until or now
+    minutes = round((end - since).total_seconds() / 60, 1) if since else round(n * POLL_INTERVAL / 60, 1)
     tag = f" ({reason})" if reason else ""
     print(f"🧠 checkpoint{tag}: judging {n} samples with Gemma…")
     try:
@@ -196,9 +204,9 @@ def run_checkpoint(goals, reason=""):
         return
     append_ledger({
         "type": "checkpoint",
-        "t": _hms(datetime.now()),
+        "t": _hms(now),
         "samples": n,
-        "minutes": round(n * POLL_INTERVAL / 60, 1),
+        "minutes": minutes,
         "verdict": verdict,
     })
     BUFFER.clear()
@@ -241,22 +249,25 @@ def main():
                     print(f"▶ session opened {_hms(now)}")
             else:
                 if idle >= IDLE_CLOSE:
-                    run_checkpoint(goals, reason="session close")  # flush before closing
-                    dur = _duration(session["start"], now)
-                    append_ledger({"type": "session_close", "t": _hms(now), "duration": dur})
-                    print(f"■ session closed {_hms(now)} (duration {dur})")
+                    # Work ended ~idle seconds ago; don't count the idle gap as activity.
+                    last_active = now - timedelta(seconds=idle)
+                    run_checkpoint(goals, since=last_checkpoint, until=last_active,
+                                   reason="session close")  # flush before closing
+                    dur = _duration(session["start"], last_active)
+                    append_ledger({"type": "session_close", "t": _hms(last_active), "duration": dur})
+                    print(f"■ session closed {_hms(last_active)} (duration {dur})")
                     session = None
                 elif idle < ACTIVE_WINDOW:
                     capture_tick()
                     if (now - last_checkpoint).total_seconds() >= CHECKPOINT_INTERVAL:
-                        run_checkpoint(goals)
+                        run_checkpoint(goals, since=last_checkpoint, until=now)
                         last_checkpoint = now
 
             time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
         if session is not None:
             now = datetime.now()
-            run_checkpoint(goals, reason="shutdown")  # don't lose the last buffer
+            run_checkpoint(goals, since=last_checkpoint, until=now, reason="shutdown")  # don't lose the last buffer
             dur = _duration(session["start"], now)
             append_ledger({"type": "session_close", "t": _hms(now), "duration": dur})
             print(f"\n■ session closed {_hms(now)} (duration {dur})")
