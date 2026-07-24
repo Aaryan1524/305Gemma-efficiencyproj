@@ -5,9 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FocusLedger — Daily Report</title>
 <style>
+  /* Dark-only by design (WHOOP-style recovery dashboard). Palette validated
+     for the #14191f card surface: band, chroma, CVD, contrast. */
   :root {
-    --bg: #f6f7f9; --card: #ffffff; --ink: #1a1d21; --muted: #6b7280;
-    --line: #e5e7eb; --accent: #1a1d21; --good: #2e9e6b; --bad: #d0524b;
+    --bg: #0b0e12; --card: #14191f; --line: #232b34;
+    --ink: #e8edf2; --muted: #8b96a3; --faint: #5c6672;
+    --good: #21a06a; --bad: #d0524b; --track: #1f262e;
   }
   * { box-sizing: border-box; }
   body {
@@ -15,74 +18,97 @@
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 36px 24px 80px; }
 
-  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
-  .brand { font-weight: 800; font-size: 22px; letter-spacing: -0.02em; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+  .brand { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
   .brand .dot { color: var(--good); }
   .badge {
     display: inline-flex; align-items: center; gap: 7px;
-    background: #e9f7ef; color: #1c7a4f; border: 1px solid #bfe6d0;
-    padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    background: rgba(33,160,106,.12); color: #4cc793; border: 1px solid rgba(33,160,106,.35);
+    padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em;
   }
-  .badge .live { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+  .badge .live { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
 
-  .headline {
-    font-size: 30px; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em;
-    margin: 0 0 10px; max-width: 22ch;
-  }
-  .goals { color: var(--muted); font-size: 15px; margin-bottom: 32px; }
-  .goals b { color: var(--ink); font-weight: 600; }
+  .micro { font-size: 11px; font-weight: 700; text-transform: uppercase;
+           letter-spacing: .12em; color: var(--muted); }
 
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
-       color: var(--muted); margin: 36px 0 14px; font-weight: 700; }
+  /* hero: ring + stats */
+  .hero { display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center;
+          background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+          padding: 26px 30px; }
+  .ringbox { position: relative; width: 210px; height: 210px; }
+  .ringbox svg { transform: rotate(-90deg); }
+  .ringbox .center { position: absolute; inset: 0; display: flex; flex-direction: column;
+                     align-items: center; justify-content: center; }
+  .score { font-size: 58px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+           font-variant-numeric: tabular-nums; }
+  .score small { font-size: 22px; font-weight: 700; color: var(--muted); }
 
-  /* time-by-category bar */
-  .bar { display: flex; height: 40px; border-radius: 10px; overflow: hidden;
-         border: 1px solid var(--line); background: var(--card); }
-  .bar span { display: block; }
-  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
-  .legend .item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
-  .legend .min { color: var(--muted); }
+  .hero-right .headline { font-size: 21px; font-weight: 700; line-height: 1.35; margin: 6px 0 16px; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+  .tile { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .tile .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .goalsline { margin-top: 14px; color: var(--muted); font-size: 14px; }
+  .goalsline b { color: var(--ink); font-weight: 600; }
 
-  /* cards */
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-          padding: 20px 22px; margin-bottom: 16px; }
-  .session-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
-  .session-time { font-weight: 700; font-size: 17px; }
-  .session-dur { color: var(--muted); font-size: 14px; font-weight: 600; }
+  h2.micro { margin: 34px 0 14px; }
 
-  .tick { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px;
-          align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
-  .tick:first-of-type { border-top: none; }
-  .tick .clk { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; padding-top: 2px; }
-  .tick .act { font-weight: 600; }
-  .tick .note { color: var(--muted); font-size: 14px; margin-top: 2px; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
-          color: #fff; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
-  .aligned { font-size: 13px; font-weight: 700; margin-top: 6px; text-align: right; }
-  .aligned.yes { color: var(--good); }
-  .aligned.no { color: var(--bad); }
+  /* category bars */
+  .cats { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 8px 20px; }
+  .catrow { display: grid; grid-template-columns: 140px 1fr 64px; gap: 14px; align-items: center;
+            padding: 11px 0; border-top: 1px solid var(--line); }
+  .catrow:first-child { border-top: none; }
+  .catrow .name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
+  .catrow .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .catrow .bartrack { height: 10px; border-radius: 5px; background: var(--track); overflow: hidden; }
+  .catrow .barfill { height: 100%; border-radius: 5px; }
+  .catrow .min { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums;
+                 font-size: 14px; font-weight: 600; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+          padding: 18px 22px; margin-bottom: 14px; }
 
   .row-goal { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0;
               border-top: 1px solid var(--line); }
   .row-goal:first-child { border-top: none; }
   .row-goal .g { font-weight: 600; }
   .row-goal .v { color: var(--muted); font-size: 14px; }
-  .row-goal .t { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+  .row-goal .t { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+
+  .session-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .session-time { font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .session-dur { color: var(--muted); font-size: 13px; font-weight: 700; }
+  .tick { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px; align-items: start;
+          padding: 12px 0; border-top: 1px solid var(--line); }
+  .tick:first-of-type { border-top: none; }
+  .tick .clk { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 2px; }
+  .tick .act { font-weight: 600; font-size: 15px; }
+  .tick .note { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800;
+          text-transform: uppercase; letter-spacing: .05em;
+          color: #0b0e12; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .aligned { font-size: 12px; font-weight: 800; margin-top: 6px; text-align: right; }
+  .aligned.yes { color: #4cc793; }
+  .aligned.no { color: #e0736c; }
 
   .drift .card { border-left: 3px solid var(--bad); }
   .drift .what { font-weight: 600; }
-  .drift .when { color: var(--muted); font-size: 14px; }
+  .drift .when { color: var(--muted); font-size: 13px; }
 
   ul.tomorrow { list-style: none; padding: 0; margin: 0; }
   ul.tomorrow li { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-                   padding: 14px 18px 14px 44px; margin-bottom: 10px; position: relative; font-weight: 500; }
+                   padding: 13px 18px 13px 44px; margin-bottom: 10px; position: relative; font-weight: 500; }
   ul.tomorrow li::before { content: "→"; position: absolute; left: 18px; color: var(--good); font-weight: 800; }
 
-  footer { margin-top: 48px; color: var(--muted); font-size: 13px; text-align: center; }
+  footer { margin-top: 46px; color: var(--faint); font-size: 12.5px; text-align: center; }
   .empty { color: var(--muted); font-style: italic; }
+
+  @media (max-width: 700px) {
+    .hero { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+    .stats { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -93,26 +119,53 @@
     <div class="badge"><span class="live"></span> 100% local · zero network</div>
   </header>
 
-  <p class="headline">{{ synthesis.headline or "No activity recorded today." }}</p>
-  {% if goals %}<p class="goals"><b>Today's goals:</b> {{ goals }}</p>{% endif %}
+  {% set ring_c = 565.49 %}
+  {% set ring_color = '#21a06a' if focus_score >= 70 else ('#bf8018' if focus_score >= 40 else '#d0524b') %}
+  <div class="hero">
+    <div class="ringbox">
+      <svg width="210" height="210" viewBox="0 0 210 210" role="img"
+           aria-label="Focus score {{ focus_score }} percent">
+        <circle cx="105" cy="105" r="90" fill="none" stroke="var(--track)" stroke-width="13"/>
+        <circle cx="105" cy="105" r="90" fill="none" stroke="{{ ring_color }}" stroke-width="13"
+                stroke-linecap="round"
+                stroke-dasharray="{{ (focus_score / 100 * ring_c) | round(1) }} {{ ring_c }}"/>
+      </svg>
+      <div class="center">
+        <div class="score">{{ focus_score }}<small>%</small></div>
+        <div class="micro">Focus score</div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="micro">Today</div>
+      <div class="headline">{{ synthesis.headline or "No activity recorded today." }}</div>
+      <div class="stats">
+        <div class="tile"><div class="micro">Tracked</div>
+          <div class="v">{{ total_min // 60 }}h {{ total_min % 60 }}m</div></div>
+        <div class="tile"><div class="micro">On goal</div>
+          <div class="v">{{ aligned_min // 60 }}h {{ aligned_min % 60 }}m</div></div>
+        <div class="tile"><div class="micro">Drift</div>
+          <div class="v">{{ drift_min }}m</div></div>
+      </div>
+      {% if goals %}<div class="goalsline"><b>Goals:</b> {{ goals }}</div>{% endif %}
+    </div>
+  </div>
 
   {% if categories %}
-  <h2>Where the time went</h2>
-  <div class="bar">
+  <h2 class="micro">Where the time went</h2>
+  <div class="cats">
     {% for c in categories %}
-    <span title="{{ c.label }} — {{ c.minutes }} min" style="width: {{ c.pct }}%; background: {{ c.color }};"></span>
-    {% endfor %}
-  </div>
-  <div class="legend">
-    {% for c in categories %}
-    <div class="item"><span class="swatch" style="background: {{ c.color }}"></span>
-      {{ c.label }} <span class="min">{{ c.minutes }}m</span></div>
+    <div class="catrow" title="{{ c.label }} — {{ c.minutes }} min ({{ c.pct }}% of tracked time)">
+      <div class="name"><span class="swatch" style="background: {{ c.color }}"></span>{{ c.label }}</div>
+      <div class="bartrack"><div class="barfill"
+        style="width: {{ (100 * c.minutes / max_cat_min) | round(1) if max_cat_min else 0 }}%; background: {{ c.color }};"></div></div>
+      <div class="min">{{ c.minutes }}m</div>
+    </div>
     {% endfor %}
   </div>
   {% endif %}
 
   {% if synthesis.goal_progress %}
-  <h2>Goal progress</h2>
+  <h2 class="micro">Goal progress</h2>
   <div class="card">
     {% for g in synthesis.goal_progress %}
     <div class="row-goal">
@@ -123,7 +176,7 @@
   </div>
   {% endif %}
 
-  <h2>Sessions</h2>
+  <h2 class="micro">Sessions</h2>
   {% if sessions %}
     {% for s in sessions %}
     <div class="card">
@@ -153,7 +206,7 @@
   {% endif %}
 
   {% if synthesis.drift %}
-  <h2>Drift</h2>
+  <h2 class="micro">Drift</h2>
   <div class="drift">
     {% for d in synthesis.drift %}
     <div class="card">
@@ -165,7 +218,7 @@
   {% endif %}
 
   {% if synthesis.tomorrow %}
-  <h2>Tomorrow</h2>
+  <h2 class="micro">Tomorrow</h2>
   <ul class="tomorrow">
     {% for a in synthesis.tomorrow %}<li>{{ a }}</li>{% endfor %}
   </ul>
