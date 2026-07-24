@@ -100,7 +100,7 @@ def notch_path(x0, x1, ytop, ybot, tr, br):
     Quartz.CGPathAddLineToPoint(p, None, x1 - tr - br, ybot)
     Quartz.CGPathAddQuadCurveToPoint(p, None, x1 - tr, ybot, x1 - tr, ybot + br)
     Quartz.CGPathAddLineToPoint(p, None, x1 - tr, ytop - tr)
-    Quartz.CGPathAddQuadCurveToPoint(p, None, x1, ytop, x1, ytop)
+    Quartz.CGPathAddQuadCurveToPoint(p, None, x1 - tr, ytop, x1, ytop)
     Quartz.CGPathCloseSubpath(p)
     return p
 
