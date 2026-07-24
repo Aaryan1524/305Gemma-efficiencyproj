@@ -14,5 +14,6 @@ __pycache__/
 *.pyc
 .DS_Store
 
-# Compiled dictation helper (rebuild: see header of dictate.swift)
+# Compiled dictation helper (rebuild: ./build_dictate.sh)
 dictate
+Dictate.app/

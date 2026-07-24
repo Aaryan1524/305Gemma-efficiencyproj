@@ -17,10 +17,13 @@ Login launch:   python notch.py --install-login   (writes a LaunchAgent)
 
 import math
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 from datetime import date
 
 import AppKit
@@ -32,7 +35,8 @@ import focusledger as fl
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PYTHON = sys.executable
-DICTATE = os.path.join(BASE, "dictate")   # Swift speech-to-text helper
+DICTATE_APP = os.path.join(BASE, "Dictate.app")   # Swift speech-to-text helper
+DICTATE_EXE = "Dictate.app/Contents/MacOS/dictate"
 
 # The window itself is a fixed, transparent stage; only the black shape
 # inside it animates. That is what makes the motion buttery — we never
@@ -45,13 +49,17 @@ SPRING_STIFFNESS = (2 * math.pi / 0.47) ** 2   # ≈ 179
 SPRING_DAMPING = 2 * 0.77 * math.sqrt(SPRING_STIFFNESS)  # ≈ 21
 SPRING_DURATION = 0.8
 
-INK = AppKit.NSColor.whiteColor()
-MUTED = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.60, 1.0)
-FAINT = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.38, 1.0)
-GREEN = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.19, 0.78, 0.51, 1.0)
-PILL_GREY = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.16, 1.0)
-PILL_GREEN = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.11, 0.52, 0.34, 1.0)
-FIELD_BG = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.11, 1.0)
+# Luxury Editorial Aesthetic (Te Vártá inspiration on pure pitch black background)
+INK         = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.95, 0.94, 0.91, 1.0)  # Off-white / Cream (#F2EFE7)
+MUTED       = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.64, 0.61, 0.56, 1.0)  # Warm Taupe / Sand (#A39C8F)
+FAINT       = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.95, 0.94, 0.91, 0.40) # Muted Faint
+CREAM_CTA   = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.92, 0.90, 0.86, 1.0)  # Primary Off-White Pill (#ECE6DC)
+CREAM_TEXT  = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.10, 0.09, 0.08, 1.0)  # Dark Charcoal Text (#1A1714)
+GLASS_BG    = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.10, 1.0)                       # Translucent Glass Pill
+FIELD_BG    = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.06, 1.0)                       # Soft Frosted Field Fill
+GREEN       = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.92, 0.90, 0.86, 1.0)  # Soft Pearl/Cream Accent
+PILL_GREY   = GLASS_BG
+PILL_GREEN  = CREAM_CTA
 
 _WEIGHTS = {
     "regular": AppKit.NSFontWeightRegular,
@@ -61,21 +69,20 @@ _WEIGHTS = {
 }
 
 
+def _serif(size, italic=False, weight="regular"):
+    """Editorial serif font (Georgia / New York / Palatino) for luxury minimalist aesthetic."""
+    font_name = "Georgia-Italic" if italic else ("Georgia-Bold" if weight == "bold" else "Georgia")
+    f = AppKit.NSFont.fontWithName_size_(font_name, size)
+    if f is None:
+        f = AppKit.NSFont.systemFontOfSize_weight_(size, _WEIGHTS.get(weight, AppKit.NSFontWeightRegular))
+    return f
+
+
 def _font(size, weight="regular", rounded=False, mono=False):
-    """System SF Pro; `rounded` swaps in SF Rounded, `mono` uses tabular digits
-    (the live-timer look from the reference gallery)."""
+    """System font for clean monospaced digits and metadata captions."""
     w = _WEIGHTS[weight]
     f = (AppKit.NSFont.monospacedDigitSystemFontOfSize_weight_(size, w)
          if mono else AppKit.NSFont.systemFontOfSize_weight_(size, w))
-    if rounded:
-        try:
-            d = f.fontDescriptor().fontDescriptorWithDesign_(
-                AppKit.NSFontDescriptorSystemDesignRounded)
-            rf = AppKit.NSFont.fontWithDescriptor_size_(d, size)
-            if rf is not None:
-                f = rf
-        except AttributeError:
-            pass
     return f
 
 
@@ -320,25 +327,25 @@ class App(AppKit.NSObject):
         top = H - self.mb - 10   # stay clear of the physical notch band
         pad = 24
 
-        # Header row: green dot glyph + semibold wordmark, faint tagline right.
+        # Header row: subtle off-white dot glyph + serif wordmark, tracked uppercase tag right.
         self.content.addSubview_(_label("●", AppKit.NSMakeRect(pad, top - 24, 14, 16),
-                                        _font(10, "regular"), GREEN))
-        self.content.addSubview_(_label("FocusLedger", AppKit.NSMakeRect(pad + 17, top - 26, 120, 18),
-                                        _font(14, "semibold", rounded=True), INK))
-        tag = _label("100% local", AppKit.NSMakeRect(W - pad - 90, top - 24, 90, 14),
-                     _font(10, "medium"), FAINT)
+                                        _font(9, "regular"), GREEN))
+        self.content.addSubview_(_label("FocusLedger", AppKit.NSMakeRect(pad + 17, top - 26, 140, 20),
+                                        _serif(14, weight="bold"), INK))
+        tag = _label("100% LOCAL", AppKit.NSMakeRect(W - pad - 110, top - 24, 110, 14),
+                     _font(9.5, "medium"), FAINT)
         tag.setAlignment_(AppKit.NSTextAlignmentRight)
         self.content.addSubview_(tag)
 
         if self.tracker is None and self.goals is None and not self.day_done:
             self.content.addSubview_(_label("What are your goals today?",
-                                            AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
-                                            _font(13, "semibold"), INK))
+                                            AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 22),
+                                            _serif(16, italic=False, weight="regular"), INK))
             self.content.addSubview_(_label("Say them or type them. Specific beats noble.",
-                                            AppKit.NSMakeRect(pad, top - 76, W - 2 * pad, 14),
-                                            _font(11, "regular"), MUTED))
+                                            AppKit.NSMakeRect(pad, top - 78, W - 2 * pad, 15),
+                                            _serif(11.5, italic=True), MUTED))
             self.field = AppKit.NSTextField.alloc().initWithFrame_(
-                AppKit.NSMakeRect(pad, top - 112, W - 2 * pad, 28))
+                AppKit.NSMakeRect(pad, top - 114, W - 2 * pad, 30))
             self.field.setFont_(_font(12.5, "regular"))
             self.field.setTextColor_(INK)
             self.field.setBezeled_(False)
@@ -351,18 +358,18 @@ class App(AppKit.NSObject):
             self.field.setPlaceholderString_("Ship the demo · study calc · keep Slack short")
             self.field.setTarget_(self); self.field.setAction_("startDay:")
             self.content.addSubview_(self.field)
-            self.micBtn = self._pill(self._mic_label(), "speakGoals:", PILL_GREY,
-                                     AppKit.NSMakeRect(pad, 18, 124, 28))
+            self.micBtn = self._pill(self._mic_label(), "speakGoals:", GLASS_BG,
+                                     AppKit.NSMakeRect(pad, 18, 124, 28), text_color=INK)
             self.content.addSubview_(self.micBtn)
-            self.content.addSubview_(self._pill("Start day", "startDay:", PILL_GREEN,
-                                                AppKit.NSMakeRect(W - pad - 96, 18, 96, 28)))
+            self.content.addSubview_(self._pill("Start day", "startDay:", CREAM_CTA,
+                                                AppKit.NSMakeRect(W - pad - 96, 18, 96, 28), text_color=CREAM_TEXT))
             self.panel.makeKeyAndOrderFront_(None)
             AppKit.NSApp.activateIgnoringOtherApps_(True)
             self.panel.makeFirstResponder_(self.field)
         elif self.tracker is not None:
             self.sessLabel = _label(self.status["session"],
-                                    AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
-                                    _font(12.5, "semibold", mono=True), GREEN)
+                                    AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 20),
+                                    _serif(15, italic=False, weight="bold"), INK)
             self.lineLabel = _label(self.status["line"],
                                     AppKit.NSMakeRect(pad, top - 78, W - 2 * pad, 15),
                                     _font(11, "regular"), MUTED)
@@ -371,36 +378,38 @@ class App(AppKit.NSObject):
             self.content.addSubview_(self.lineLabel)
             goals = _label("Goals · " + (self.goals or ""),
                            AppKit.NSMakeRect(pad, top - 100, W - 2 * pad, 15),
-                           _font(11, "regular"), FAINT)
+                           _serif(11, italic=True), FAINT)
             goals.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
             self.content.addSubview_(goals)
-            self.content.addSubview_(self._pill("View report", "viewReport:", PILL_GREY,
-                                                AppKit.NSMakeRect(W - pad - 208, 18, 100, 28)))
-            self.content.addSubview_(self._pill("End my day", "endDay:", PILL_GREEN,
-                                                AppKit.NSMakeRect(W - pad - 100, 18, 100, 28)))
+            self.content.addSubview_(self._pill("View report", "viewReport:", GLASS_BG,
+                                                AppKit.NSMakeRect(W - pad - 215, 18, 105, 28), text_color=INK))
+            self.content.addSubview_(self._pill("End my day", "endDay:", CREAM_CTA,
+                                                AppKit.NSMakeRect(W - pad - 100, 18, 100, 28), text_color=CREAM_TEXT))
         else:
             msg = "Day closed — report is open." if self.day_done else "Not tracking."
-            self.content.addSubview_(_label(msg, AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 18),
-                                            _font(13, "semibold"), INK))
-            self.content.addSubview_(self._pill("View report", "viewReport:", PILL_GREY,
-                                                AppKit.NSMakeRect(W - pad - 208, 18, 100, 28)))
-            q = self._pill("Quit", None, PILL_GREY,
-                           AppKit.NSMakeRect(W - pad - 100, 18, 100, 28))
+            self.content.addSubview_(_label(msg, AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 20),
+                                            _serif(15, italic=False, weight="regular"), INK))
+            self.content.addSubview_(self._pill("View report", "viewReport:", GLASS_BG,
+                                                AppKit.NSMakeRect(W - pad - 208, 18, 100, 28), text_color=INK))
+            q = self._pill("Quit", None, GLASS_BG,
+                           AppKit.NSMakeRect(W - pad - 100, 18, 100, 28), text_color=INK)
             q.setTarget_(AppKit.NSApp); q.setAction_("terminate:")
             self.content.addSubview_(q)
 
     @objc.python_method
-    def _pill(self, title, action, bg, frame):
-        """Rounded pill button, reference-gallery style: borderless, layer-
-        backed capsule with a semibold white label."""
+    def _pill(self, title, action, bg, frame, text_color=None):
+        """Rounded pill button: borderless, layer-backed capsule with serif/sans typography."""
+        if text_color is None:
+            text_color = CREAM_TEXT if bg == CREAM_CTA else INK
         btn = AppKit.NSButton.alloc().initWithFrame_(frame)
         btn.setBordered_(False)
         btn.setWantsLayer_(True)
         btn.layer().setBackgroundColor_(bg.CGColor())
         btn.layer().setCornerRadius_(frame.size.height / 2.0)
+        font = _serif(12, weight="bold") if bg == CREAM_CTA else _font(11.5, "medium")
         attrs = {
-            AppKit.NSFontAttributeName: _font(12, "semibold"),
-            AppKit.NSForegroundColorAttributeName: INK,
+            AppKit.NSFontAttributeName: font,
+            AppKit.NSForegroundColorAttributeName: text_color,
         }
         btn.setAttributedTitle_(
             AppKit.NSAttributedString.alloc().initWithString_attributes_(title, attrs))
@@ -410,9 +419,9 @@ class App(AppKit.NSObject):
 
     @objc.python_method
     def _pill_title(self, btn, title):
-        """Retitle an existing pill (the mic pill flips label while listening)."""
+        """Retitle an existing pill."""
         attrs = {
-            AppKit.NSFontAttributeName: _font(12, "semibold"),
+            AppKit.NSFontAttributeName: _font(11.5, "medium"),
             AppKit.NSForegroundColorAttributeName: INK,
         }
         btn.setAttributedTitle_(
@@ -422,11 +431,22 @@ class App(AppKit.NSObject):
 
     # ---------- voice goals ----------
     #
-    # `dictate` is a tiny Swift helper (see dictate.swift) that transcribes
-    # on-device via Speech.framework. It has to be a separate binary: TCC
-    # kills any process touching the mic without an Info.plist usage
-    # description, and a bare `python` has none. It streams partials on
-    # stderr and prints the final line on stdout.
+    # Dictate.app is a tiny Swift helper (see dictate.swift) that transcribes
+    # on-device via Speech.framework.
+    #
+    # It has to be a separate app launched with `open`, for two stacked
+    # reasons: TCC kills any process that touches the mic without an
+    # Info.plist usage description (a bare `python` has none), and it blames
+    # the *parent* — so spawning the helper from here dies with SIGABRT even
+    # though the helper itself is properly described. Going through `open`
+    # hands the launch to LaunchServices, which makes the helper its own
+    # responsible process.
+    #
+    # `open` gives us no stdout, so the helper writes the transcript to a file
+    # as it goes (partials included) and touches <file>.done when it finishes.
+    # Polling that is what fills the field live.
+
+    LISTEN_TIMEOUT = 45      # generous: the helper caps itself well before this
 
     @objc.python_method
     def _mic_label(self):
@@ -436,9 +456,9 @@ class App(AppKit.NSObject):
         if getattr(self, "dictating", False):
             self._stop_dictation()
             return
-        if not os.path.exists(DICTATE):
+        if not os.path.exists(DICTATE_APP):
             self.field.setStringValue_("")
-            self.field.setPlaceholderString_("dictate helper not built — see dictate.swift")
+            self.field.setPlaceholderString_("helper not built — run ./build_dictate.sh")
             return
         self.dictating = True
         self._pill_title(self.micBtn, self._mic_label())
@@ -446,26 +466,40 @@ class App(AppKit.NSObject):
 
     @objc.python_method
     def _runDictation(self):
-        """Run the helper, streaming partial transcripts into the field as they land."""
+        """Launch the helper and stream its partial transcripts into the field."""
+        tmp = tempfile.mkdtemp(prefix="fl-dictate-")
+        out = os.path.join(tmp, "transcript.txt")
+        done = out + ".done"
         try:
-            proc = subprocess.Popen([DICTATE], stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True, cwd=BASE)
-        except OSError as e:
-            self._on_main(lambda: self._end_dictation(f"could not start dictate ({e})"))
+            subprocess.run(["open", "-n", DICTATE_APP, "--args", "--out", out],
+                           check=True, cwd=BASE)
+        except (OSError, subprocess.CalledProcessError) as e:
+            shutil.rmtree(tmp, ignore_errors=True)
+            self._on_main(self._end_dictation, f"could not start helper ({e})")
             return
-        self.dictateProc = proc
-        for line in proc.stderr:
-            line = line.strip()
-            if line.startswith("…"):
-                self._on_main(self._apply_transcript, line.lstrip("… ").strip())
-            elif line.startswith("ERR:"):
-                self._on_main(self._end_dictation, line[4:].strip())
-        final = (proc.stdout.read() or "").strip()
-        proc.wait()
-        self.dictateProc = None
-        if final:
-            self._on_main(self._apply_transcript, final)
-        self._on_main(self._end_dictation, None if final else "didn't catch that — try again")
+
+        last = ""
+        deadline = time.time() + self.LISTEN_TIMEOUT
+        while time.time() < deadline and self.dictating:
+            if os.path.exists(out):
+                try:
+                    cur = open(out).read().strip()
+                except OSError:
+                    cur = last
+                if cur != last:
+                    last = cur
+                    if not cur.startswith("ERR:"):
+                        self._on_main(self._apply_transcript, cur)
+            if os.path.exists(done):
+                break
+            time.sleep(0.1)
+
+        shutil.rmtree(tmp, ignore_errors=True)
+        if last.startswith("ERR:"):
+            self._on_main(self._end_dictation, last[4:].strip())
+        else:
+            self._on_main(self._end_dictation,
+                          None if last else "didn't catch that — try again")
 
     @objc.python_method
     def _on_main(self, fn, *args):
@@ -491,13 +525,17 @@ class App(AppKit.NSObject):
 
     @objc.python_method
     def _stop_dictation(self):
-        """Stop listening — on button re-press, or when the panel collapses."""
-        proc = getattr(self, "dictateProc", None)
-        if proc is not None:
-            try:
-                proc.terminate()
-            except OSError:
-                pass
+        """Stop listening — on button re-press, or when the panel collapses.
+
+        The helper isn't our child (LaunchServices started it), so there's no
+        handle to terminate; clearing the flag stops the poll loop and pkill
+        closes the mic rather than leaving it open for the full timeout.
+        """
+        self.dictating = False
+        try:
+            subprocess.run(["pkill", "-f", DICTATE_EXE], check=False)
+        except OSError:
+            pass
         self._end_dictation(None)
 
     def startDay_(self, sender):
