@@ -1,16 +1,21 @@
 """Notch companion — FocusLedger's home on the Mac.
 
-A borderless, always-on-top black panel that sits flush with the top-center
-of the screen so it visually merges with the notch. Click to expand.
+The panel is a single CAShapeLayer drawn in the classic dynamic-notch
+silhouette: the top corners flare OUTWARD so the black surface flows into
+the real notch with no visible seam, the bottom corners carry a deep
+radius, and every state change is spring-animated (design inspired by the
+open-source DynamicNotch project; implementation is original).
 
-First open of the day it asks for your goals (the ledger remembers, so it
-only asks once), then launches the tracker and shows live status. "End day"
-flushes the last checkpoint and opens the WHOOP-style report.
+Collapsed, it hugs the physical notch with slim wings and a status dot.
+Click it any time: first open of the day it asks your goals; afterwards it
+shows the live session, lets you open the WHOOP report mid-day, or end the
+day. "End my day" flushes the final checkpoint and opens the report.
 
 Run:            python notch.py
 Login launch:   python notch.py --install-login   (writes a LaunchAgent)
 """
 
+import math
 import os
 import signal
 import subprocess
@@ -20,6 +25,7 @@ from datetime import date
 
 import AppKit
 import objc
+import Quartz
 from PyObjCTools import AppHelper
 
 import focusledger as fl
@@ -27,15 +33,17 @@ import focusledger as fl
 BASE = os.path.dirname(os.path.abspath(__file__))
 PYTHON = sys.executable
 
-# Panel geometry (Cocoa: origin is bottom-left of the screen).
-# The collapsed pill spans the menu-bar/notch band PLUS a small lip that hangs
-# below it — on notched Macs anything drawn inside that band is physically
-# invisible behind the notch, so all content lives in the lip / below the band.
-COLLAPSED_W = 230
-LIP = 20
-EXPANDED_W, EXPANDED_H = 400, 250
+# The window itself is a fixed, transparent stage; only the black shape
+# inside it animates. That is what makes the motion buttery — we never
+# resize the window, we spring the layer.
+FRAME_W, FRAME_H = 760, 420
 
-BG = AppKit.NSColor.blackColor()
+# Spring tuned to the "balanced" dynamic-notch feel: response ~0.47s,
+# damping fraction 0.77.
+SPRING_STIFFNESS = (2 * math.pi / 0.47) ** 2   # ≈ 179
+SPRING_DAMPING = 2 * 0.77 * math.sqrt(SPRING_STIFFNESS)  # ≈ 21
+SPRING_DURATION = 0.8
+
 INK = AppKit.NSColor.whiteColor()
 MUTED = AppKit.NSColor.colorWithCalibratedWhite_alpha_(0.62, 1.0)
 GREEN = AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(0.13, 0.63, 0.42, 1.0)
@@ -52,10 +60,50 @@ def _label(text, size, bold, color, frame):
     return lb
 
 
+def notch_path(x0, x1, ytop, ybot, tr, br):
+    """The notch silhouette (bottom-left coords): top corners flare outward
+    (concave, so the shape melts into the menu bar), bottom corners are
+    convex with a deep radius."""
+    p = Quartz.CGPathCreateMutable()
+    Quartz.CGPathMoveToPoint(p, None, x0, ytop)
+    Quartz.CGPathAddQuadCurveToPoint(p, None, x0 + tr, ytop, x0 + tr, ytop - tr)
+    Quartz.CGPathAddLineToPoint(p, None, x0 + tr, ybot + br)
+    Quartz.CGPathAddQuadCurveToPoint(p, None, x0 + tr, ybot, x0 + tr + br, ybot)
+    Quartz.CGPathAddLineToPoint(p, None, x1 - tr - br, ybot)
+    Quartz.CGPathAddQuadCurveToPoint(p, None, x1 - tr, ybot, x1 - tr, ybot + br)
+    Quartz.CGPathAddLineToPoint(p, None, x1 - tr, ytop - tr)
+    Quartz.CGPathAddQuadCurveToPoint(p, None, x1, ytop, x1, ytop)
+    Quartz.CGPathCloseSubpath(p)
+    return p
+
+
 class NotchPanel(AppKit.NSPanel):
-    """Borderless panels can't become key by default; the goals field needs it."""
     def canBecomeKeyWindow(self):
         return True
+
+
+class RootView(AppKit.NSView):
+    """Transparent stage; only the current shape rect accepts clicks so the
+    rest of the window never steals mouse events from apps beneath it."""
+    def initWithFrame_(self, frame):
+        self = objc.super(RootView, self).initWithFrame_(frame)
+        if self is not None:
+            self.hotRect = AppKit.NSMakeRect(0, 0, 0, 0)
+            self.onClick = None
+        return self
+
+    def acceptsFirstMouse_(self, event):
+        return True  # respond to the first click even when the app is inactive
+
+    def hitTest_(self, point):
+        p = self.convertPoint_fromView_(point, None) if self.superview() is None else point
+        if AppKit.NSPointInRect(p, self.hotRect):
+            return objc.super(RootView, self).hitTest_(point)
+        return None
+
+    def mouseDown_(self, event):
+        if self.onClick is not None:
+            self.onClick()
 
 
 class App(AppKit.NSObject):
@@ -63,140 +111,224 @@ class App(AppKit.NSObject):
         self.tracker = None
         self.status = {"line": "idle", "session": "no session"}
         self.expanded = False
+        self.day_done = False
 
-        # Menu-bar band height (38 on notched Macs, 24 otherwise): everything in
-        # it hides behind the notch, so content is laid out below it.
         screen = AppKit.NSScreen.screens()[0]
         f, v = screen.frame(), screen.visibleFrame()
         self.mb = int((f.origin.y + f.size.height) - (v.origin.y + v.size.height))
-        self.collapsed_h = self.mb + LIP
 
-        rect = AppKit.NSMakeRect(0, 0, COLLAPSED_W, self.collapsed_h)
+        # Real notch width when the API is available; sane fallback otherwise.
+        self.notch_w = 200
+        try:
+            tl, tr = screen.auxiliaryTopLeftArea(), screen.auxiliaryTopRightArea()
+            if tl is not None and tr is not None:
+                self.notch_w = int(f.size.width - tl.size.width - tr.size.width)
+        except AttributeError:
+            pass
+
+        rect = AppKit.NSMakeRect(0, 0, FRAME_W, FRAME_H)
+        style = (AppKit.NSWindowStyleMaskBorderless
+                 | AppKit.NSWindowStyleMaskNonactivatingPanel)  # clicks land without app activation
         self.panel = NotchPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-            rect, AppKit.NSWindowStyleMaskBorderless, AppKit.NSBackingStoreBuffered, False)
-        self.panel.setLevel_(AppKit.NSStatusWindowLevel)
+            rect, style, AppKit.NSBackingStoreBuffered, False)
+        self.panel.setLevel_(AppKit.NSPopUpMenuWindowLevel)  # reliably above the menu bar
         self.panel.setOpaque_(False)
         self.panel.setBackgroundColor_(AppKit.NSColor.clearColor())
-        self.panel.setHidesOnDeactivate_(False)  # panels hide on deactivate by default
+        self.panel.setHasShadow_(False)  # the shape layer carries its own shadow
+        self.panel.setHidesOnDeactivate_(False)
         self.panel.setCollectionBehavior_(
             AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
             | AppKit.NSWindowCollectionBehaviorStationary)
-        self.panel.setHasShadow_(True)
 
-        self.root = AppKit.NSView.alloc().initWithFrame_(rect)
+        x = f.origin.x + (f.size.width - FRAME_W) / 2.0
+        y = f.origin.y + f.size.height - FRAME_H
+        self.panel.setFrame_display_(AppKit.NSMakeRect(x, y, FRAME_W, FRAME_H), False)
+
+        self.root = RootView.alloc().initWithFrame_(rect)
         self.root.setWantsLayer_(True)
-        layer = self.root.layer()
-        layer.setBackgroundColor_(BG.CGColor())
-        layer.setCornerRadius_(14.0)
-        # Round only the bottom corners so the top edge merges with the notch.
-        layer.setMaskedCorners_(1 | 2)  # kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner
         self.panel.setContentView_(self.root)
 
-        click = AppKit.NSClickGestureRecognizer.alloc().initWithTarget_action_(
-            self, "togglePanel:")
-        self.root.addGestureRecognizer_(click)
+        self.shape = Quartz.CAShapeLayer.layer()
+        self.shape.setFillColor_(AppKit.NSColor.blackColor().CGColor())
+        self.shape.setShadowColor_(AppKit.NSColor.blackColor().CGColor())
+        self.shape.setShadowOpacity_(0.55)
+        self.shape.setShadowRadius_(14.0)
+        self.shape.setShadowOffset_(AppKit.NSMakeSize(0, -5))
+        self.root.layer().addSublayer_(self.shape)
 
-        self._place(COLLAPSED_W, self.collapsed_h, animate=False)
+        # Status dot living on the right wing of the collapsed notch.
+        self.dot = Quartz.CALayer.layer()
+        self.dot.setBackgroundColor_(MUTED.CGColor())
+        self.dot.setCornerRadius_(3.5)
+        self.root.layer().addSublayer_(self.dot)
+
+        # Content sits inside the expanded shape, below the menu-bar band
+        # (anything inside the band hides behind the physical notch).
+        er = self.shape_rect(True)
+        self.content = AppKit.NSView.alloc().initWithFrame_(er)
+        self.content.setWantsLayer_(True)
+        self.content.setAlphaValue_(0.0)
+        self.root.addSubview_(self.content)
+
+        # Clicking the notch expands it; clicking the expanded body does nothing
+        # (buttons handle themselves); clicking anywhere OUTSIDE collapses —
+        # the global monitor only sees events destined for other apps.
+        self.root.onClick = self._notchClicked
+        self.globalMonitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            AppKit.NSEventMaskLeftMouseDown, self._outsideClick)
+
+        self.apply_state(animate=False)
         self.panel.orderFrontRegardless()
 
-        # First open of the day → ask goals; otherwise straight to tracking.
         self.goals = fl.load_todays_goals()
         if self.goals:
             self.startTracker()
-            self.setExpanded_(False)
         else:
             self.setExpanded_(True)
 
         AppKit.NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             1.0, self, "tick:", None, True)
 
-    # ---------- geometry ----------
+    # ---------- geometry & animation ----------
 
     @objc.python_method
-    def _place(self, w, h, animate=True):
-        screen = AppKit.NSScreen.screens()[0].frame()  # primary display, not key-focus one
-        x = screen.origin.x + (screen.size.width - w) / 2.0
-        y = screen.origin.y + screen.size.height - h
-        frame = AppKit.NSMakeRect(x, y, w, h)
-        self.panel.setFrame_display_animate_(frame, True, animate)
-        self.root.setFrame_(AppKit.NSMakeRect(0, 0, w, h))
+    def shape_rect(self, expanded):
+        """Shape bounds in window coords (bottom-left origin, top edge = FRAME_H)."""
+        if expanded:
+            w, h = 470, self.mb + 240
+        else:
+            # 14px chin below the menu-bar band: the visible, clickable lip.
+            w, h = self.notch_w + 96, self.mb + 14
+        x0 = (FRAME_W - w) / 2.0
+        return AppKit.NSMakeRect(x0, FRAME_H - h, w, h)
+
+    @objc.python_method
+    def _spring(self, key, from_v, to_v):
+        a = Quartz.CASpringAnimation.animationWithKeyPath_(key)
+        a.setMass_(1.0)
+        a.setStiffness_(SPRING_STIFFNESS)
+        a.setDamping_(SPRING_DAMPING)
+        a.setDuration_(SPRING_DURATION)
+        a.setFromValue_(from_v)
+        a.setToValue_(to_v)
+        return a
+
+    @objc.python_method
+    def apply_state(self, animate=True):
+        r = self.shape_rect(self.expanded)
+        tr, br = (10.0, 24.0) if self.expanded else (8.0, 11.0)
+        new_path = notch_path(r.origin.x, r.origin.x + r.size.width,
+                              FRAME_H, r.origin.y, tr, br)
+        old_path = self.shape.path()
+        self.shape.setPath_(new_path)
+        if animate and old_path is not None:
+            self.shape.addAnimation_forKey_(
+                self._spring("path", old_path, new_path), "path")
+
+        # Wing dot: visible only when collapsed.
+        dr = self.shape_rect(False)
+        dot_frame = AppKit.NSMakeRect(
+            dr.origin.x + dr.size.width - 26, FRAME_H - self.mb / 2.0 - 3.5, 7, 7)
+        Quartz.CATransaction.begin()
+        Quartz.CATransaction.setDisableActions_(True)
+        self.dot.setFrame_(dot_frame)
+        Quartz.CATransaction.commit()
+        self.dot.setOpacity_(0.0 if self.expanded else 1.0)
+
+        self.root.hotRect = r
+        self.content.setFrame_(self.shape_rect(True))
+        if self.expanded:
+            self.rebuild()
+            if animate:
+                self.content.setAlphaValue_(0.0)
+                AppKit.NSAnimationContext.runAnimationGroup_completionHandler_(
+                    lambda ctx: (ctx.setDuration_(0.32),
+                                 self.content.animator().setAlphaValue_(1.0)), None)
+            else:
+                self.content.setAlphaValue_(1.0)
+        else:
+            self.content.setAlphaValue_(0.0)
 
     def setExpanded_(self, on):
         self.expanded = bool(on)
+        self.apply_state(animate=True)
+
+    @objc.python_method
+    def _notchClicked(self):
+        if not self.expanded:
+            self.setExpanded_(True)
+
+    @objc.python_method
+    def _outsideClick(self, event):
         if self.expanded:
-            self._place(EXPANDED_W, EXPANDED_H)
-        else:
-            self._place(COLLAPSED_W, self.collapsed_h)
-        self.rebuild()
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                lambda: self.setExpanded_(False))
 
-    def togglePanel_(self, sender):
-        self.setExpanded_(not self.expanded)
-
-    # ---------- UI states ----------
+    # ---------- content states ----------
 
     def rebuild(self):
-        for v in list(self.root.subviews()):
+        for v in list(self.content.subviews()):
             v.removeFromSuperview()
 
-        if not self.expanded:
-            # Only the lip below the menu-bar band is physically visible.
-            dot = _label("●", 9, False, GREEN if self.tracker else MUTED,
-                         AppKit.NSMakeRect(48, 2, 14, 14))
-            title = _label("FocusLedger", 11, True, INK,
-                           AppKit.NSMakeRect(64, 1, 90, 16))
-            hint = _label("▾", 11, False, MUTED,
-                          AppKit.NSMakeRect(160, 1, 20, 16))
-            for v in (dot, title, hint):
-                self.root.addSubview_(v)
-            return
+        H = self.content.frame().size.height
+        W = self.content.frame().size.width
+        top = H - self.mb - 6   # stay clear of the physical notch band
+        pad = 26
 
-        W, H = EXPANDED_W, EXPANDED_H
-        top = H - self.mb  # content ceiling: everything above hides behind the notch
-        self.root.addSubview_(_label("Focus", 15, True, INK, AppKit.NSMakeRect(20, top - 28, 60, 20)))
-        self.root.addSubview_(_label("●", 11, False, GREEN, AppKit.NSMakeRect(63, top - 26, 14, 16)))
-        self.root.addSubview_(_label("Ledger", 15, True, INK, AppKit.NSMakeRect(74, top - 28, 70, 20)))
-        self.root.addSubview_(_label("100% local · zero network", 10, False, MUTED,
-                                     AppKit.NSMakeRect(W - 170, top - 25, 160, 14)))
+        self.content.addSubview_(_label("Focus", 15, True, INK, AppKit.NSMakeRect(pad, top - 28, 60, 20)))
+        self.content.addSubview_(_label("●", 11, False, GREEN, AppKit.NSMakeRect(pad + 43, top - 26, 14, 16)))
+        self.content.addSubview_(_label("Ledger", 15, True, INK, AppKit.NSMakeRect(pad + 54, top - 28, 70, 20)))
+        self.content.addSubview_(_label("100% local · zero network", 10, False, MUTED,
+                                        AppKit.NSMakeRect(W - 172, top - 25, 150, 14)))
 
-        if self.tracker is None and self.goals is None:
-            self.root.addSubview_(_label("What are your goals today?", 14, True, INK,
-                                         AppKit.NSMakeRect(20, top - 66, W - 40, 20)))
+        if self.tracker is None and self.goals is None and not self.day_done:
+            self.content.addSubview_(_label("What are your goals today?", 14, True, INK,
+                                            AppKit.NSMakeRect(pad, top - 68, W - 2 * pad, 20)))
             self.field = AppKit.NSTextField.alloc().initWithFrame_(
-                AppKit.NSMakeRect(20, top - 102, W - 40, 26))
+                AppKit.NSMakeRect(pad, top - 104, W - 2 * pad, 26))
             self.field.setFont_(AppKit.NSFont.systemFontOfSize_(13))
             self.field.setPlaceholderString_("Ship the demo; study calc; keep Slack short")
             self.field.setTarget_(self); self.field.setAction_("startDay:")
-            self.root.addSubview_(self.field)
-            btn = AppKit.NSButton.alloc().initWithFrame_(AppKit.NSMakeRect(20, top - 146, 110, 30))
-            btn.setTitle_("Start day"); btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-            btn.setTarget_(self); btn.setAction_("startDay:")
-            self.root.addSubview_(btn)
+            self.content.addSubview_(self.field)
+            btn = self._button("Start day", "startDay:", AppKit.NSMakeRect(pad, top - 148, 110, 30))
+            self.content.addSubview_(btn)
             self.panel.makeKeyAndOrderFront_(None)
             AppKit.NSApp.activateIgnoringOtherApps_(True)
             self.panel.makeFirstResponder_(self.field)
         elif self.tracker is not None:
             self.sessLabel = _label(self.status["session"], 13, True, GREEN,
-                                    AppKit.NSMakeRect(20, top - 62, W - 40, 18))
+                                    AppKit.NSMakeRect(pad, top - 62, W - 2 * pad, 18))
             self.lineLabel = _label(self.status["line"], 12, False, MUTED,
-                                    AppKit.NSMakeRect(20, top - 86, W - 40, 18))
+                                    AppKit.NSMakeRect(pad, top - 86, W - 2 * pad, 18))
             self.lineLabel.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
-            self.root.addSubview_(self.sessLabel)
-            self.root.addSubview_(self.lineLabel)
+            self.content.addSubview_(self.sessLabel)
+            self.content.addSubview_(self.lineLabel)
             goals = _label("Goals: " + (self.goals or ""), 11, False, MUTED,
-                           AppKit.NSMakeRect(20, top - 116, W - 40, 26))
+                           AppKit.NSMakeRect(pad, top - 116, W - 2 * pad, 26))
             goals.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
-            self.root.addSubview_(goals)
-            btn = AppKit.NSButton.alloc().initWithFrame_(AppKit.NSMakeRect(20, 16, 120, 30))
-            btn.setTitle_("End my day"); btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-            btn.setTarget_(self); btn.setAction_("endDay:")
-            self.root.addSubview_(btn)
+            self.content.addSubview_(goals)
+            self.content.addSubview_(self._button("View report", "viewReport:",
+                                                  AppKit.NSMakeRect(pad, 18, 110, 30)))
+            self.content.addSubview_(self._button("End my day", "endDay:",
+                                                  AppKit.NSMakeRect(pad + 122, 18, 110, 30)))
         else:
-            self.root.addSubview_(_label("Day closed — report is open. 🎉", 13, True, INK,
-                                         AppKit.NSMakeRect(20, top - 70, W - 40, 20)))
-            btn = AppKit.NSButton.alloc().initWithFrame_(AppKit.NSMakeRect(20, 16, 90, 30))
-            btn.setTitle_("Quit"); btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-            btn.setTarget_(AppKit.NSApp); btn.setAction_("terminate:")
-            self.root.addSubview_(btn)
+            msg = "Day closed — report is open. 🎉" if self.day_done else "Not tracking."
+            self.content.addSubview_(_label(msg, 13, True, INK,
+                                            AppKit.NSMakeRect(pad, top - 66, W - 2 * pad, 20)))
+            self.content.addSubview_(self._button("View report", "viewReport:",
+                                                  AppKit.NSMakeRect(pad, 18, 110, 30)))
+            q = self._button("Quit", None, AppKit.NSMakeRect(pad + 122, 18, 80, 30))
+            q.setTarget_(AppKit.NSApp); q.setAction_("terminate:")
+            self.content.addSubview_(q)
+
+    @objc.python_method
+    def _button(self, title, action, frame):
+        btn = AppKit.NSButton.alloc().initWithFrame_(frame)
+        btn.setTitle_(title)
+        btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
+        if action:
+            btn.setTarget_(self); btn.setAction_(action)
+        return btn
 
     # ---------- actions ----------
 
@@ -215,18 +347,34 @@ class App(AppKit.NSObject):
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=BASE)
         threading.Thread(target=self._reader, daemon=True).start()
         self.status["session"] = "tracking"
+        self.dot.setBackgroundColor_(GREEN.CGColor())
 
     def _reader(self):
         for line in self.tracker.stdout:
             line = line.strip()
             if not line:
                 continue
-            if line.startswith("▶"):
-                self.status["session"] = line
-            elif line.startswith("■"):
+            if line.startswith(("▶", "■")):
                 self.status["session"] = line
             elif line.startswith(("👁", "📒", "🧠", "⛔")):
                 self.status["line"] = line
+
+    def viewReport_(self, sender):
+        """Render the report from today's ledger — any time of day."""
+        ledger = os.path.join(BASE, "ledger.jsonl")
+        if not os.path.exists(ledger):
+            self.status["line"] = "no ledger yet — start your day first"
+            self.rebuild()
+            return
+        self.status["line"] = "🧠 generating report with Gemma…"
+        self.rebuild()
+        threading.Thread(target=self._renderReport, daemon=True).start()
+
+    def _renderReport(self):
+        subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
+                        os.path.join(BASE, "ledger.jsonl"), "--open"], cwd=BASE)
+        self.status["line"] = "report opened in your browser"
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
 
     def endDay_(self, sender):
         self.status["session"] = "closing day…"
@@ -242,12 +390,13 @@ class App(AppKit.NSObject):
                 proc.wait(timeout=180)
             except Exception:
                 proc.kill()
+        self.day_done = True
+        self.dot.setBackgroundColor_(MUTED.CGColor())
         subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
                         os.path.join(BASE, "ledger.jsonl"), "--open"], cwd=BASE)
         AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
 
     def tick_(self, timer):
-        # Refresh the two live labels without rebuilding the whole view.
         if self.expanded and self.tracker is not None:
             if getattr(self, "sessLabel", None):
                 self.sessLabel.setStringValue_(self.status["session"])
