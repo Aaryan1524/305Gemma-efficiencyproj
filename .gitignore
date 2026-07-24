@@ -1,0 +1,15 @@
+# Real activity data — never commit (ledger.sample.jsonl is the committed sample)
+ledger.jsonl
+ledger.demo.jsonl
+report.html
+
+# Screenshots (should be deleted at runtime anyway, but belt and suspenders)
+captures/
+*.png
+*.jpg
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.DS_Store

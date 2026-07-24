@@ -1,0 +1,5 @@
+mss
+pyobjc-framework-Vision
+pyobjc-framework-Quartz
+requests
+jinja2
