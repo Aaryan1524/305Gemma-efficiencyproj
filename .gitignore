@@ -1,7 +1,7 @@
 # Real activity data — never commit (ledger.sample.jsonl is the committed sample)
 ledger.jsonl
 ledger.demo.jsonl
-report.html
+/report.html
 
 # Screenshots (should be deleted at runtime anyway, but belt and suspenders)
 captures/

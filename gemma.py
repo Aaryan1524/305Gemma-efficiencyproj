@@ -6,6 +6,7 @@ end-of-day report writer), and the two functions that build on them.
 """
 
 import json
+import re
 
 import requests
 
@@ -45,7 +46,11 @@ def gemma_json(prompt, system=""):
     try:
         if s == -1 or e == -1 or e < s:
             raise ValueError("no JSON object found in response")
-        return json.loads(stripped[s:e + 1])
+        candidate = stripped[s:e + 1]
+        # Gemma occasionally leaves a trailing comma before ] or } — strict JSON
+        # rejects it, so drop it before parsing.
+        candidate = re.sub(r",(\s*[}\]])", r"\1", candidate)
+        return json.loads(candidate)
     except (ValueError, json.JSONDecodeError) as err:
         raise ValueError(
             f"Failed to parse JSON from Gemma response: {err}\n"

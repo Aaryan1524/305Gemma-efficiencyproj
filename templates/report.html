@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FocusLedger — Daily Report</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a1d21; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #1a1d21; --good: #2e9e6b; --bad: #d0524b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { font-weight: 800; font-size: 22px; letter-spacing: -0.02em; }
+  .brand .dot { color: var(--good); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #e9f7ef; color: #1c7a4f; border: 1px solid #bfe6d0;
+    padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  }
+  .badge .live { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+
+  .headline {
+    font-size: 30px; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em;
+    margin: 0 0 10px; max-width: 22ch;
+  }
+  .goals { color: var(--muted); font-size: 15px; margin-bottom: 32px; }
+  .goals b { color: var(--ink); font-weight: 600; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+       color: var(--muted); margin: 36px 0 14px; font-weight: 700; }
+
+  /* time-by-category bar */
+  .bar { display: flex; height: 40px; border-radius: 10px; overflow: hidden;
+         border: 1px solid var(--line); background: var(--card); }
+  .bar span { display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+  .legend .item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
+  .legend .min { color: var(--muted); }
+
+  /* cards */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 20px 22px; margin-bottom: 16px; }
+  .session-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .session-time { font-weight: 700; font-size: 17px; }
+  .session-dur { color: var(--muted); font-size: 14px; font-weight: 600; }
+
+  .tick { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px;
+          align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
+  .tick:first-of-type { border-top: none; }
+  .tick .clk { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; padding-top: 2px; }
+  .tick .act { font-weight: 600; }
+  .tick .note { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+          color: #fff; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .aligned { font-size: 13px; font-weight: 700; margin-top: 6px; text-align: right; }
+  .aligned.yes { color: var(--good); }
+  .aligned.no { color: var(--bad); }
+
+  .row-goal { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0;
+              border-top: 1px solid var(--line); }
+  .row-goal:first-child { border-top: none; }
+  .row-goal .g { font-weight: 600; }
+  .row-goal .v { color: var(--muted); font-size: 14px; }
+  .row-goal .t { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+
+  .drift .card { border-left: 3px solid var(--bad); }
+  .drift .what { font-weight: 600; }
+  .drift .when { color: var(--muted); font-size: 14px; }
+
+  ul.tomorrow { list-style: none; padding: 0; margin: 0; }
+  ul.tomorrow li { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+                   padding: 14px 18px 14px 44px; margin-bottom: 10px; position: relative; font-weight: 500; }
+  ul.tomorrow li::before { content: "→"; position: absolute; left: 18px; color: var(--good); font-weight: 800; }
+
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; text-align: center; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">Focus<span class="dot">●</span>Ledger</div>
+    <div class="badge"><span class="live"></span> 100% local · zero network</div>
+  </header>
+
+  <p class="headline">{{ synthesis.headline or "No activity recorded today." }}</p>
+  {% if goals %}<p class="goals"><b>Today's goals:</b> {{ goals }}</p>{% endif %}
+
+  {% if categories %}
+  <h2>Where the time went</h2>
+  <div class="bar">
+    {% for c in categories %}
+    <span title="{{ c.label }} — {{ c.minutes }} min" style="width: {{ c.pct }}%; background: {{ c.color }};"></span>
+    {% endfor %}
+  </div>
+  <div class="legend">
+    {% for c in categories %}
+    <div class="item"><span class="swatch" style="background: {{ c.color }}"></span>
+      {{ c.label }} <span class="min">{{ c.minutes }}m</span></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if synthesis.goal_progress %}
+  <h2>Goal progress</h2>
+  <div class="card">
+    {% for g in synthesis.goal_progress %}
+    <div class="row-goal">
+      <div><div class="g">{{ g.goal }}</div><div class="v">{{ g.verdict }}</div></div>
+      <div class="t">{{ g.time_min }} min</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h2>Sessions</h2>
+  {% if sessions %}
+    {% for s in sessions %}
+    <div class="card">
+      <div class="session-head">
+        <div class="session-time">{{ s.start or "—" }} – {{ s.end or "open" }}</div>
+        <div class="session-dur">{{ s.duration }}</div>
+      </div>
+      {% for c in s.checkpoints %}
+      <div class="tick">
+        <div class="clk">{{ c.t }}</div>
+        <div>
+          <div class="act">{{ c.activity }}</div>
+          <div class="note">{{ c.note }}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="chip" style="background: {{ c.category | catcolor }}">{{ c.category | catlabel }}</span>
+          <div class="aligned {{ 'yes' if c.aligned else 'no' }}">{{ '✓ on goal' if c.aligned else '✕ off goal' }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty">No captured activity in this session.</div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No sessions recorded.</p>
+  {% endif %}
+
+  {% if synthesis.drift %}
+  <h2>Drift</h2>
+  <div class="drift">
+    {% for d in synthesis.drift %}
+    <div class="card">
+      <div class="what">{{ d.what }}</div>
+      <div class="when">{{ d.when }}{% if d.time_min %} · {{ d.time_min }} min{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if synthesis.tomorrow %}
+  <h2>Tomorrow</h2>
+  <ul class="tomorrow">
+    {% for a in synthesis.tomorrow %}<li>{{ a }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <footer>
+    Every judgment on this page was made on-device by Gemma 3 12B via Ollama.
+    No screen data left this machine. Images were deleted the instant they were read.
+  </footer>
+
+</div>
+</body>
+</html>
