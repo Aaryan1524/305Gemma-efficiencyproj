@@ -24,8 +24,10 @@ import threading
 from datetime import date
 
 import AppKit
+import AVFoundation
 import objc
 import Quartz
+import Speech
 from PyObjCTools import AppHelper
 
 import focusledger as fl
@@ -134,6 +136,109 @@ class RootView(AppKit.NSView):
             self.onClick()
 
 
+class SpeechManager:
+    """Push-to-talk on-device speech-to-text for the morning goals prompt.
+
+    Uses SFSpeechRecognizer with requiresOnDeviceRecognition when the locale
+    supports it, matching the "every token runs on this laptop" pitch — it
+    only falls back to Apple's server-side recognizer if on-device isn't
+    available. `on_text(text, is_final)` fires on the main thread for every
+    partial and the final transcript; `on_error(message)` fires on any
+    failure (most commonly: Microphone / Speech Recognition access not yet
+    granted in System Settings → Privacy & Security).
+    """
+    def __init__(self, on_text, on_error):
+        self.on_text = on_text
+        self.on_error = on_error
+        self.recognizer = Speech.SFSpeechRecognizer.alloc().init()
+        self.engine = AVFoundation.AVAudioEngine.alloc().init()
+        self.request = None
+        self.task = None
+        self.listening = False
+
+    @property
+    def _main(self):
+        return AppKit.NSOperationQueue.mainQueue()
+
+    def start(self):
+        if self.listening or self.recognizer is None:
+            return
+        # Speech Recognition requires the requesting process to be a bundled
+        # .app declaring NSSpeechRecognitionUsageDescription — without it,
+        # macOS's TCC layer hard-crashes the process (SIGABRT) rather than
+        # denying gracefully. Bail out cleanly instead if we're not bundled
+        # that way (i.e. launched as a bare interpreter, not via the .app).
+        if AppKit.NSBundle.mainBundle().objectForInfoDictionaryKey_(
+                "NSSpeechRecognitionUsageDescription") is None:
+            self._main.addOperationWithBlock_(lambda: self.on_error(
+                "Voice input needs the built .app — run build_notch_app.sh"))
+            return
+        if not self.recognizer.isAvailable():
+            self._main.addOperationWithBlock_(
+                lambda: self.on_error("Speech recognizer unavailable right now"))
+            return
+
+        def auth_handler(status):
+            if status == Speech.SFSpeechRecognizerAuthorizationStatusAuthorized:
+                self._main.addOperationWithBlock_(self._begin)
+            else:
+                self._main.addOperationWithBlock_(lambda: self.on_error(
+                    "Speech access denied — grant it in Privacy & Security"))
+        Speech.SFSpeechRecognizer.requestAuthorization_(auth_handler)
+
+    @objc.python_method
+    def _begin(self):
+        request = Speech.SFSpeechAudioBufferRecognitionRequest.alloc().init()
+        request.setShouldReportPartialResults_(True)
+        if self.recognizer.supportsOnDeviceRecognition():
+            request.setRequiresOnDeviceRecognition_(True)
+        self.request = request
+
+        input_node = self.engine.inputNode()
+        fmt = input_node.outputFormatForBus_(0)
+
+        def tap(buffer, when):
+            if self.request is not None:
+                self.request.appendAudioPCMBuffer_(buffer)
+        input_node.installTapOnBus_bufferSize_format_block_(0, 1024, fmt, tap)
+
+        self.engine.prepare()
+        ok, err = self.engine.startAndReturnError_(None)
+        if not ok:
+            self._main.addOperationWithBlock_(
+                lambda: self.on_error(f"Microphone failed to start: {err}"))
+            return
+
+        def result_handler(result, error):
+            if result is not None:
+                text = result.bestTranscription().formattedString()
+                final = bool(result.isFinal())
+                self._main.addOperationWithBlock_(lambda t=text, f=final: self.on_text(t, f))
+                if final:
+                    self._main.addOperationWithBlock_(self.stop)
+            if error is not None:
+                self._main.addOperationWithBlock_(self.stop)
+
+        self.task = self.recognizer.recognitionTaskWithRequest_resultHandler_(request, result_handler)
+        self.listening = True
+
+    def stop(self):
+        if not self.listening:
+            return
+        self.listening = False
+        try:
+            self.engine.stop()
+            self.engine.inputNode().removeTapOnBus_(0)
+        except Exception:
+            pass
+        if self.request is not None:
+            self.request.endAudio()
+        if self.task is not None:
+            self.task.cancel()
+        self.request = None
+        self.task = None
+
+
 class App(AppKit.NSObject):
     def applicationDidFinishLaunching_(self, note):
         self.tracker = None
@@ -212,6 +317,8 @@ class App(AppKit.NSObject):
         self.globalMonitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
             AppKit.NSEventMaskLeftMouseDown, self._outsideClick)
 
+        self.speech = SpeechManager(on_text=self._onSpeechText, on_error=self._onSpeechError)
+
         self.apply_state(animate=False)
         self.panel.orderFrontRegardless()
 
@@ -283,9 +390,10 @@ class App(AppKit.NSObject):
             self.rebuild()
             if animate:
                 self.content.setAlphaValue_(0.0)
-                AppKit.NSAnimationContext.runAnimationGroup_completionHandler_(
-                    lambda ctx: (ctx.setDuration_(0.32),
-                                 self.content.animator().setAlphaValue_(1.0)), None)
+                def _fade_in(ctx):
+                    ctx.setDuration_(0.32)
+                    self.content.animator().setAlphaValue_(1.0)
+                AppKit.NSAnimationContext.runAnimationGroup_completionHandler_(_fade_in, None)
             else:
                 self.content.setAlphaValue_(1.0)
         else:
@@ -303,8 +411,11 @@ class App(AppKit.NSObject):
     @objc.python_method
     def _outsideClick(self, event):
         if self.expanded:
-            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
-                lambda: self.setExpanded_(False))
+            def collapse():
+                if self.speech.listening:
+                    self.speech.stop()
+                self.setExpanded_(False)
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(collapse)
 
     # ---------- content states ----------
 
@@ -348,6 +459,14 @@ class App(AppKit.NSObject):
             self.field.setPlaceholderString_("Ship the demo · study calc · keep Slack short")
             self.field.setTarget_(self); self.field.setAction_("startDay:")
             self.content.addSubview_(self.field)
+
+            self.micBtn = self._mic_button(AppKit.NSMakeRect(pad, 50, 40, 40))
+            self.content.addSubview_(self.micBtn)
+            self.micCaption = _label("Tap to speak your goals",
+                                     AppKit.NSMakeRect(pad + 52, 60, W - 2 * pad - 52, 16),
+                                     _font(11.5, "regular"), MUTED)
+            self.content.addSubview_(self.micCaption)
+
             self.content.addSubview_(self._pill("Start day", "startDay:", PILL_GREEN,
                                                 AppKit.NSMakeRect(W - pad - 96, 18, 96, 28)))
             self.panel.makeKeyAndOrderFront_(None)
@@ -402,12 +521,65 @@ class App(AppKit.NSObject):
             btn.setTarget_(self); btn.setAction_(action)
         return btn
 
+    @objc.python_method
+    def _mic_button(self, frame):
+        """Minimalist circular mic glyph (SF Symbol), tap to start/stop listening."""
+        btn = AppKit.NSButton.alloc().initWithFrame_(frame)
+        btn.setBordered_(False)
+        btn.setWantsLayer_(True)
+        btn.layer().setBackgroundColor_(PILL_GREY.CGColor())
+        btn.layer().setCornerRadius_(frame.size.height / 2.0)
+        config = AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_(
+            16, AppKit.NSFontWeightMedium)
+        img = AppKit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
+            "mic.fill", "Speak your goals")
+        if img is not None:
+            img = img.imageWithSymbolConfiguration_(config)
+            btn.setImage_(img)
+            btn.setImagePosition_(AppKit.NSImageOnly)
+            btn.setContentTintColor_(INK)
+        btn.setTarget_(self); btn.setAction_("toggleMic:")
+        return btn
+
     # ---------- actions ----------
+
+    def toggleMic_(self, sender):
+        if self.speech.listening:
+            self.speech.stop()
+            self._resetMicUI()
+        else:
+            if getattr(self, "micCaption", None) is not None:
+                self.micCaption.setStringValue_("Listening…")
+            if getattr(self, "micBtn", None) is not None:
+                self.micBtn.layer().setBackgroundColor_(GREEN.CGColor())
+            self.speech.start()
+
+    @objc.python_method
+    def _resetMicUI(self):
+        if getattr(self, "micCaption", None) is not None:
+            self.micCaption.setStringValue_("Tap to speak your goals")
+        if getattr(self, "micBtn", None) is not None:
+            self.micBtn.layer().setBackgroundColor_(PILL_GREY.CGColor())
+
+    @objc.python_method
+    def _onSpeechText(self, text, is_final):
+        if getattr(self, "field", None) is not None and text:
+            self.field.setStringValue_(text)
+        if is_final:
+            self._resetMicUI()
+
+    @objc.python_method
+    def _onSpeechError(self, message):
+        self._resetMicUI()
+        if getattr(self, "micCaption", None) is not None:
+            self.micCaption.setStringValue_(message)
 
     def startDay_(self, sender):
         goals = self.field.stringValue().strip()
         if not goals:
             return
+        if self.speech.listening:
+            self.speech.stop()
         self.goals = goals
         fl.append_ledger({"type": "goals", "date": date.today().isoformat(), "goals": goals})
         self.startTracker()
