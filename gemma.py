@@ -160,8 +160,15 @@ def _goal_options(goals):
     Fed to the schema as an enum so the verdict has to name a goal the user
     actually stated. Without it the model will happily invent one out of
     whatever was on screen.
+
+    Spoken goals arrive as one unpunctuated run-on ("ship the demo and then
+    study calc"), so split on the words people say as well as the characters
+    they type — otherwise dictated goals collapse to a single option and
+    every block has to be attributed to all of them at once, or to 'none'.
     """
-    parts = [p.strip() for p in re.split(r"[;\n]", goals) if p.strip()]
+    parts = [p.strip(" .,-") for p in
+             re.split(r"[;\n,]|\band then\b|\band\b", goals) if p.strip(" .,-")]
+    parts = [p for p in dict.fromkeys(parts) if len(p) > 3][:6]
     return (parts or [goals.strip() or "none"]) + ["none"]
 
 
