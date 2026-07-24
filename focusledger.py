@@ -88,6 +88,12 @@ CAPTURE_DIR = "captures"
 BUFFER = []
 _last_hash = None
 
+# A 30-min block at POLL_INTERVAL=10 is up to 180 ticks; that many samples
+# makes a prompt Gemma can't finish inside its 180s timeout. Cap the buffer
+# so the checkpoint stays answerable — and so a checkpoint that fails (which
+# keeps the buffer for a retry) can't ratchet the next prompt even larger.
+MAX_BUFFER = 20
+
 
 def capture_tick():
     """One capture opportunity: identify the focused window, respect the blocklist,
@@ -124,6 +130,10 @@ def capture_tick():
             pass
 
     BUFFER.append({"t": _hms(now), "app": app, "title": title, "text": text})
+    if len(BUFFER) > MAX_BUFFER:
+        # Thin by half rather than dropping the oldest: the verdict should
+        # describe the whole block, not just its last few minutes.
+        del BUFFER[::2]
     print(f"🔎 ocr'd ({len(text)} chars) → image deleted | buffer={len(BUFFER)}")
 
 
