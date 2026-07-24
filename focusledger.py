@@ -5,12 +5,15 @@ hours from a laptop left sitting idle), and while a session is open,
 gates the capture pipeline below it.
 """
 
+import hashlib
 import os
 import subprocess
 import time
 from datetime import datetime
 
 from AppKit import NSWorkspace
+import mss
+import mss.tools
 import Quartz
 
 DEV_MODE = bool(os.environ.get("FL_DEV"))
@@ -68,13 +71,37 @@ def is_blocked(app, title):
     return any(w in t for w in BLOCKED_TITLE_WORDS)
 
 
+CAPTURE_DIR = "captures"
+
+# Screenshots waiting for the OCR stage to consume (next phase). Each item:
+# {"path": ..., "t": "HH:MM:SS", "app": ..., "title": ...}
+PENDING = []
+_last_hash = None
+
+
 def capture_tick():
-    """One capture opportunity: identify the focused window, respect the blocklist."""
+    """One capture opportunity: identify the focused window, respect the blocklist,
+    and screenshot only if the screen actually changed since last time."""
+    global _last_hash
     app, title = frontmost()
     if is_blocked(app, title):
         print(f"⛔ blocked: {app}")
         return
     print(f"👁 {app} — {title}")
+
+    with mss.MSS() as sct:
+        img = sct.grab(sct.monitors[1])
+    digest = hashlib.md5(img.rgb).hexdigest()
+    if digest == _last_hash:
+        print("· unchanged")
+        return
+    _last_hash = digest
+
+    now = datetime.now()
+    path = os.path.join(CAPTURE_DIR, f"capture_{now:%Y%m%d_%H%M%S_%f}.png")
+    mss.tools.to_png(img.rgb, img.size, output=path)
+    print(f"📸 saved {path}")
+    PENDING.append({"path": path, "t": _hms(now), "app": app, "title": title})
 
 
 def _hms(t):
@@ -92,6 +119,7 @@ def main():
     """Session state machine: poll idle time, open/close sessions, drive capture_tick()."""
     session = None  # {"start": datetime} while open, else None
 
+    os.makedirs(CAPTURE_DIR, exist_ok=True)
     print(f"FocusLedger session manager starting (DEV_MODE={DEV_MODE})")
 
     try:
