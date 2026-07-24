@@ -79,9 +79,12 @@ python notch.py                  # the notch companion (recommended)
 python notch.py --install-login  # greet you at every login (LaunchAgent)
 ```
 
-First open of the day it expands and asks your goals; after that it collapses to a pill,
-tracks quietly, and shows live status when you click it. **End my day** flushes the last
-checkpoint and opens the WHOOP-style report — Focus Score ring, on-goal time, drift.
+The panel is drawn in the true dynamic-notch silhouette (flared top corners, deep bottom
+radius) and spring-animates out of the notch. First open of the day it asks your goals;
+after that it collapses to slim wings with a status dot, tracks quietly, and expands on
+click — click anywhere else to tuck it away. **View report** renders the WHOOP-style
+report from today's ledger any time of day; **End my day** flushes the last checkpoint
+and opens the final report — Focus Score ring, on-goal time, drift.
 
 Or run the pieces directly:
 
