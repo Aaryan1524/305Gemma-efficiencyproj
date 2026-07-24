@@ -6,17 +6,19 @@ gates the capture pipeline below it.
 """
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 
 from AppKit import NSWorkspace
 import mss
 import mss.tools
 import Quartz
 
+import gemma
 import vision_ocr
 
 DEV_MODE = bool(os.environ.get("FL_DEV"))
@@ -25,10 +27,14 @@ if DEV_MODE:
     POLL_INTERVAL = 2
     ACTIVE_WINDOW = 10
     IDLE_CLOSE = 20
+    CHECKPOINT_INTERVAL = 60      # 1 min in dev so you can watch verdicts land
 else:
     POLL_INTERVAL = 10
     ACTIVE_WINDOW = 60
     IDLE_CLOSE = 600
+    CHECKPOINT_INTERVAL = 1800    # 30 min in real use
+
+LEDGER_PATH = "ledger.jsonl"
 
 
 def idle_seconds():
@@ -132,9 +138,78 @@ def _duration(start, end):
     return f"{h}h {m}m"
 
 
+def append_ledger(obj):
+    """Append one JSON object as a line to the ledger. This is the only thing
+    that ever touches disk — verdicts and session markers, never pixels or raw text."""
+    with open(LEDGER_PATH, "a") as f:
+        f.write(json.dumps(obj) + "\n")
+
+
+def load_todays_goals():
+    """Return today's goals string if the ledger already has one for today, else None.
+
+    Lets you stop and restart the tracker during the day without being re-prompted
+    or duplicating the goals line.
+    """
+    if not os.path.exists(LEDGER_PATH):
+        return None
+    today = date.today().isoformat()
+    goals = None
+    with open(LEDGER_PATH) as f:
+        for line in f:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get("type") == "goals" and row.get("date") == today:
+                goals = row.get("goals")
+    return goals
+
+
+def prompt_goals():
+    """Get today's goals: reuse today's if present, otherwise ask once and record them."""
+    existing = load_todays_goals()
+    if existing:
+        print(f"📌 today's goals (from ledger): {existing}")
+        return existing
+    print("What are your goals for today? (one line, be specific — vague goals read as drift)")
+    goals = input("goals> ").strip()
+    append_ledger({"type": "goals", "date": date.today().isoformat(), "goals": goals})
+    return goals
+
+
+def run_checkpoint(goals, reason=""):
+    """Judge the buffered samples against today's goals, append the verdict, clear the buffer.
+
+    This is Gemma call site #1: a 30-minute block of messy screen text becomes one
+    structured verdict. After this the raw text is discarded — only the verdict persists.
+    """
+    if not BUFFER:
+        return
+    n = len(BUFFER)
+    tag = f" ({reason})" if reason else ""
+    print(f"🧠 checkpoint{tag}: judging {n} samples with Gemma…")
+    try:
+        verdict = gemma.checkpoint(goals, BUFFER)
+    except Exception as e:
+        print(f"⚠ checkpoint failed ({e}); keeping buffer for next attempt")
+        return
+    append_ledger({
+        "type": "checkpoint",
+        "t": _hms(datetime.now()),
+        "samples": n,
+        "minutes": round(n * POLL_INTERVAL / 60, 1),
+        "verdict": verdict,
+    })
+    BUFFER.clear()
+    print(f"📒 verdict: {verdict.get('category')} | aligned={verdict.get('aligned')} "
+          f"| {verdict.get('activity')}")
+
+
 def main():
     """Session state machine: poll idle time, open/close sessions, drive capture_tick()."""
     session = None  # {"start": datetime} while open, else None
+    last_checkpoint = None  # datetime of the last checkpoint within the current session
 
     # Line-buffer so status prints appear live even when piped (e.g. tee during a demo).
     try:
@@ -145,6 +220,14 @@ def main():
     os.makedirs(CAPTURE_DIR, exist_ok=True)
     print(f"FocusLedger session manager starting (DEV_MODE={DEV_MODE})")
 
+    goals = prompt_goals()
+    print("🔥 warming up Gemma…")
+    try:
+        gemma.warmup()
+    except Exception as e:
+        print(f"⚠ Gemma warmup failed ({e}). Is `ollama serve` running? Continuing anyway.")
+    print("ready. Tracking sessions — Ctrl-C to stop.\n")
+
     try:
         while True:
             idle = idle_seconds()
@@ -153,19 +236,30 @@ def main():
             if session is None:
                 if idle < ACTIVE_WINDOW:
                     session = {"start": now}
+                    last_checkpoint = now
+                    append_ledger({"type": "session_open", "t": _hms(now)})
                     print(f"▶ session opened {_hms(now)}")
             else:
                 if idle >= IDLE_CLOSE:
-                    print(f"■ session closed {_hms(now)} (duration {_duration(session['start'], now)})")
+                    run_checkpoint(goals, reason="session close")  # flush before closing
+                    dur = _duration(session["start"], now)
+                    append_ledger({"type": "session_close", "t": _hms(now), "duration": dur})
+                    print(f"■ session closed {_hms(now)} (duration {dur})")
                     session = None
                 elif idle < ACTIVE_WINDOW:
                     capture_tick()
+                    if (now - last_checkpoint).total_seconds() >= CHECKPOINT_INTERVAL:
+                        run_checkpoint(goals)
+                        last_checkpoint = now
 
             time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
         if session is not None:
             now = datetime.now()
-            print(f"\n■ session closed {_hms(now)} (duration {_duration(session['start'], now)})")
+            run_checkpoint(goals, reason="shutdown")  # don't lose the last buffer
+            dur = _duration(session["start"], now)
+            append_ledger({"type": "session_close", "t": _hms(now), "duration": dur})
+            print(f"\n■ session closed {_hms(now)} (duration {dur})")
         print("FocusLedger stopped.")
 
 
