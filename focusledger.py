@@ -17,6 +17,8 @@ import mss
 import mss.tools
 import Quartz
 
+import vision_ocr
+
 DEV_MODE = bool(os.environ.get("FL_DEV"))
 
 if DEV_MODE:
@@ -74,15 +76,20 @@ def is_blocked(app, title):
 
 CAPTURE_DIR = "captures"
 
-# Screenshots waiting for the OCR stage to consume (next phase). Each item:
-# {"path": ..., "t": "HH:MM:SS", "app": ..., "title": ...}
-PENDING = []
+# In-memory buffer of OCR'd samples awaiting the next 30-min checkpoint.
+# Each item: {"t": "HH:MM:SS", "app": ..., "title": ..., "text": ...}
+# No image ever lives here — pixels are gone before this list grows.
+BUFFER = []
 _last_hash = None
 
 
 def capture_tick():
     """One capture opportunity: identify the focused window, respect the blocklist,
-    and screenshot only if the screen actually changed since last time."""
+    screenshot only on change, OCR it, delete the image immediately, buffer the text.
+
+    The image exists on disk for the length of one OCR call and no longer. What
+    survives is text, and only until the next checkpoint turns it into a verdict.
+    """
     global _last_hash
     app, title = frontmost()
     if is_blocked(app, title):
@@ -101,8 +108,17 @@ def capture_tick():
     now = datetime.now()
     path = os.path.join(CAPTURE_DIR, f"capture_{now:%Y%m%d_%H%M%S_%f}.png")
     mss.tools.to_png(img.rgb, img.size, output=path)
-    print(f"📸 saved {path}")
-    PENDING.append({"path": path, "t": _hms(now), "app": app, "title": title})
+    try:
+        text = vision_ocr.ocr(path)
+    finally:
+        # Delete the image no matter what — an OCR failure must not leave pixels behind.
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    BUFFER.append({"t": _hms(now), "app": app, "title": title, "text": text})
+    print(f"🔎 ocr'd ({len(text)} chars) → image deleted | buffer={len(BUFFER)}")
 
 
 def _hms(t):
