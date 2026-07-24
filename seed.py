@@ -1,0 +1,111 @@
+"""Seed data for the demo report.
+
+Your morning is real captured data; a hackathon demo also wants a full day.
+This generates plausible evening + night sessions and either (a) writes a
+complete self-contained sample ledger for the repo, or (b) appends the seeded
+sessions onto a copy of your real ledger so the report shows a whole day.
+
+Be honest about it in the writeup: the demo report combines real captured
+data with seeded sessions. Judges respect that and it costs nothing.
+"""
+
+import argparse
+import json
+
+GOALS = "Ship the FocusLedger capture loop; study for the calculus exam; keep Slack in check"
+
+# A plausible seeded day. The morning here is illustrative; when you pass a real
+# --base ledger, your real morning replaces it and only the evening/night are added.
+MORNING = [
+    {"type": "session_open", "t": "09:12:00"},
+    {"type": "checkpoint", "t": "09:42:00", "samples": 180, "minutes": 30, "verdict": {
+        "activity": "Building the session + capture loop", "category": "deep_work",
+        "goal": "Ship the FocusLedger capture loop", "aligned": True, "confidence": "high",
+        "note": "Editing focusledger.py, idle-detection state machine on screen."}},
+    {"type": "checkpoint", "t": "10:12:00", "samples": 174, "minutes": 29, "verdict": {
+        "activity": "Wiring Vision OCR and deleting images", "category": "deep_work",
+        "goal": "Ship the FocusLedger capture loop", "aligned": True, "confidence": "high",
+        "note": "vision_ocr.py open; terminal shows captures/ staying empty."}},
+    {"type": "checkpoint", "t": "10:41:00", "samples": 120, "minutes": 20, "verdict": {
+        "activity": "Clearing Slack threads with the team", "category": "communication",
+        "goal": "keep Slack in check", "aligned": True, "confidence": "medium",
+        "note": "Short replies across two project channels."}},
+    {"type": "session_close", "t": "11:05:00", "duration": "1h 53m"},
+]
+
+EVENING = [
+    {"type": "session_open", "t": "17:45:00"},
+    {"type": "checkpoint", "t": "18:15:00", "samples": 180, "minutes": 30, "verdict": {
+        "activity": "Watching calculus lecture on integrals", "category": "learning",
+        "goal": "study for the calculus exam", "aligned": True, "confidence": "high",
+        "note": "Lecture video focused; notes app open alongside."}},
+    {"type": "checkpoint", "t": "18:45:00", "samples": 168, "minutes": 28, "verdict": {
+        "activity": "Working through practice integrals", "category": "learning",
+        "goal": "study for the calculus exam", "aligned": True, "confidence": "high",
+        "note": "PDF problem set and scratch work visible."}},
+    {"type": "checkpoint", "t": "19:15:00", "samples": 108, "minutes": 18, "verdict": {
+        "activity": "Scrolling Reddit and YouTube shorts", "category": "drift",
+        "goal": "none", "aligned": False, "confidence": "high",
+        "note": "Feeds unrelated to any stated goal."}},
+    {"type": "checkpoint", "t": "19:50:00", "samples": 180, "minutes": 30, "verdict": {
+        "activity": "Refactoring the report template", "category": "deep_work",
+        "goal": "Ship the FocusLedger capture loop", "aligned": True, "confidence": "medium",
+        "note": "report.py and templates/report.html side by side."}},
+    {"type": "session_close", "t": "20:28:00", "duration": "2h 43m"},
+]
+
+NIGHT = [
+    {"type": "session_open", "t": "23:40:00"},
+    {"type": "checkpoint", "t": "00:10:00", "samples": 180, "minutes": 30, "verdict": {
+        "activity": "Writing the Kaggle submission writeup", "category": "admin",
+        "goal": "none", "aligned": True, "confidence": "medium",
+        "note": "Markdown editor with the submission outline."}},
+    {"type": "checkpoint", "t": "00:35:00", "samples": 150, "minutes": 25, "verdict": {
+        "activity": "Final review of practice problems", "category": "learning",
+        "goal": "study for the calculus exam", "aligned": True, "confidence": "high",
+        "note": "Returned to the integrals problem set."}},
+    {"type": "session_close", "t": "01:05:00", "duration": "1h 25m"},
+]
+
+
+def load_rows(path):
+    rows = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+    return rows
+
+
+def write_rows(rows, path):
+    with open(path, "w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Generate demo ledger data.")
+    ap.add_argument("--base", help="real ledger to build on (keeps its morning, adds evening+night)")
+    ap.add_argument("--out", default="ledger.sample.jsonl", help="output ledger path")
+    args = ap.parse_args()
+
+    if args.base:
+        rows = load_rows(args.base)
+        # Keep the real day as-is, just append seeded later sessions.
+        rows = rows + EVENING + NIGHT
+    else:
+        rows = [{"type": "goals", "date": "2026-07-24", "goals": GOALS}] + MORNING + EVENING + NIGHT
+
+    write_rows(rows, args.out)
+    n_sessions = sum(1 for r in rows if r.get("type") == "session_open")
+    print(f"🌱 wrote {args.out}  ({n_sessions} sessions)")
+    if args.base:
+        print("   (kept your real captured morning, appended seeded evening + night)")
+
+
+if __name__ == "__main__":
+    main()
