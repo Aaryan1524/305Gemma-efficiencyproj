@@ -1,5 +1,7 @@
 mss
 pyobjc-framework-Vision
 pyobjc-framework-Quartz
+pyobjc-framework-Speech
+pyobjc-framework-AVFoundation
 requests
 jinja2

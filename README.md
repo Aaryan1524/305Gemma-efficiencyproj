@@ -75,16 +75,32 @@ ollama serve   # in a separate terminal if not already running
 **The notch is home.** FocusLedger lives in a little black tab under your MacBook's notch:
 
 ```bash
-python notch.py                  # the notch companion (recommended)
+python notch.py                  # quick dev run (voice input disabled — see below)
 python notch.py --install-login  # greet you at every login (LaunchAgent)
 ```
 
 The panel is drawn in the true dynamic-notch silhouette (flared top corners, deep bottom
-radius) and spring-animates out of the notch. First open of the day it asks your goals;
-after that it collapses to slim wings with a status dot, tracks quietly, and expands on
-click — click anywhere else to tuck it away. **View report** renders the WHOOP-style
-report from today's ledger any time of day; **End my day** flushes the last checkpoint
-and opens the final report — Focus Score ring, on-goal time, drift.
+radius) and spring-animates out of the notch. First open of the day it asks your goals —
+type them, or tap the mic and say them; after that it collapses to slim wings with a
+status dot and live session timer, tracks quietly, and expands on click — click anywhere
+else to tuck it away. **View report** renders the WHOOP-style report from today's ledger
+any time of day; **End my day** flushes the last checkpoint and opens the final report —
+Focus Score ring, on-goal time, drift.
+
+**Voice input needs a real `.app` bundle**, not a bare `python notch.py` — macOS's TCC
+privacy layer requires the *requesting process itself* to be a bundled app declaring
+`NSSpeechRecognitionUsageDescription`, or it hard-crashes rather than prompting. Build it
+once (and again after editing `notch.py`):
+
+```bash
+./build_notch_app.sh   # py2app build + Launch Services registration
+open dist/FocusLedger.app
+```
+
+Without the bundle, tapping the mic shows a clear message instead of crashing — typing
+goals always works either way. Speech runs on-device when the recognizer supports it for
+your locale (checked at runtime); macOS's one-time authorization dialog uses generic
+Apple boilerplate regardless, but recognition requests themselves stay local.
 
 Or run the pieces directly:
 
