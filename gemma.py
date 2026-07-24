@@ -10,7 +10,7 @@ import json
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "gemma3:4b"
+MODEL = "gemma3:12b"
 TEMPERATURE = 0.2
 
 
