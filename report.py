@@ -23,14 +23,16 @@ TEMPLATE_NAME = "report.html"
 OUT_PATH = "report.html"
 
 # Category → display label + accent color. Kept in sync with CHECKPOINT_SYS.
+# Dark-surface categorical palette, validated (lightness band, chroma floor,
+# CVD separation, contrast ≥3:1 on #14191f).
 CATEGORY_META = {
-    "deep_work":     {"label": "Deep work",     "color": "#2e9e6b"},
-    "learning":      {"label": "Learning",      "color": "#3b82c4"},
-    "communication": {"label": "Communication", "color": "#d99a2b"},
-    "admin":         {"label": "Admin",         "color": "#8a8f98"},
+    "deep_work":     {"label": "Deep work",     "color": "#21a06a"},
+    "learning":      {"label": "Learning",      "color": "#4079d6"},
+    "communication": {"label": "Communication", "color": "#bf8018"},
+    "admin":         {"label": "Admin",         "color": "#8f6fd0"},
     "drift":         {"label": "Drift",         "color": "#d0524b"},
 }
-UNKNOWN_META = {"label": "Other", "color": "#8a8f98"}
+UNKNOWN_META = {"label": "Other", "color": "#8f6fd0"}
 
 
 def load_rows(path):
@@ -119,6 +121,12 @@ def build_report(path=LEDGER_PATH):
 
     cat_min = category_minutes(sessions)
     total_min = sum(cat_min.values())
+
+    # Focus Score: share of tracked time whose verdict was aligned with a goal.
+    aligned_min = sum((c.get("minutes", 0) or 0)
+                      for s in sessions for c in s["checkpoints"] if c.get("aligned"))
+    focus_score = round(100 * aligned_min / total_min) if total_min else 0
+
     categories = [
         {
             "key": k,
@@ -137,11 +145,18 @@ def build_report(path=LEDGER_PATH):
         synthesis = {"headline": f"(Gemma synthesis unavailable: {e})",
                      "goal_progress": [], "drift": [], "tomorrow": []}
 
+    max_cat_min = max((c["minutes"] for c in categories), default=0)
+
     return {
         "goals": goals,
         "sessions": sessions,
         "categories": categories,
         "total_min": round(total_min),
+        "aligned_min": round(aligned_min),
+        "drift_min": round(cat_min.get("drift", 0)),
+        "deep_min": round(cat_min.get("deep_work", 0)),
+        "focus_score": focus_score,
+        "max_cat_min": max_cat_min,
         "meta_for": meta_for,
         "synthesis": synthesis,
     }
