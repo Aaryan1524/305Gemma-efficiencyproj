@@ -238,7 +238,7 @@ class App(AppKit.NSObject):
     def shape_rect(self, expanded):
         """Shape bounds in window coords (bottom-left origin, top edge = FRAME_H)."""
         if expanded:
-            w, h = 440, self.mb + 220
+            w, h = 390, self.mb + 175
         else:
             # Live-activity bar: wings wide enough for the dot and the session
             # timer, a slim chin below the menu-bar band for clicks.
@@ -324,29 +324,33 @@ class App(AppKit.NSObject):
 
         H = self.content.frame().size.height
         W = self.content.frame().size.width
-        top = H - self.mb - 10   # stay clear of the physical notch band
-        pad = 24
+        top = H - self.mb - 8   # stay clear of the physical notch band
+        pad = 20
 
-        # Header row: subtle off-white dot glyph + serif wordmark, tracked uppercase tag right.
-        self.content.addSubview_(_label("●", AppKit.NSMakeRect(pad, top - 24, 14, 16),
+        # Header row: Centered FocusLedger title with increased font size (18pt serif bold)
+        title = _label("FocusLedger", AppKit.NSMakeRect(pad, top - 26, W - 2 * pad, 24),
+                       _serif(18, weight="bold"), INK)
+        title.setAlignment_(AppKit.NSTextAlignmentCenter)
+        self.content.addSubview_(title)
+
+        # Status dot far left & tracked badge far right
+        self.content.addSubview_(_label("●", AppKit.NSMakeRect(pad, top - 22, 14, 16),
                                         _font(9, "regular"), GREEN))
-        self.content.addSubview_(_label("FocusLedger", AppKit.NSMakeRect(pad + 17, top - 26, 140, 20),
-                                        _serif(14, weight="bold"), INK))
-        tag = _label("100% LOCAL", AppKit.NSMakeRect(W - pad - 110, top - 24, 110, 14),
-                     _font(9.5, "medium"), FAINT)
+        tag = _label("100% LOCAL", AppKit.NSMakeRect(W - pad - 85, top - 22, 85, 14),
+                     _font(9, "medium"), FAINT)
         tag.setAlignment_(AppKit.NSTextAlignmentRight)
         self.content.addSubview_(tag)
 
         if self.tracker is None and self.goals is None and not self.day_done:
             self.content.addSubview_(_label("What are your goals today?",
-                                            AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 22),
-                                            _serif(16, italic=False, weight="regular"), INK))
+                                            AppKit.NSMakeRect(pad, top - 54, W - 2 * pad, 20),
+                                            _serif(15, italic=False, weight="regular"), INK))
             self.content.addSubview_(_label("Say them or type them. Specific beats noble.",
-                                            AppKit.NSMakeRect(pad, top - 78, W - 2 * pad, 15),
-                                            _serif(11.5, italic=True), MUTED))
+                                            AppKit.NSMakeRect(pad, top - 72, W - 2 * pad, 14),
+                                            _serif(11, italic=True), MUTED))
             self.field = AppKit.NSTextField.alloc().initWithFrame_(
-                AppKit.NSMakeRect(pad, top - 114, W - 2 * pad, 30))
-            self.field.setFont_(_font(12.5, "regular"))
+                AppKit.NSMakeRect(pad, top - 106, W - 2 * pad, 28))
+            self.field.setFont_(_font(12, "regular"))
             self.field.setTextColor_(INK)
             self.field.setBezeled_(False)
             self.field.setWantsLayer_(True)
@@ -355,44 +359,44 @@ class App(AppKit.NSObject):
             self.field.setFocusRingType_(AppKit.NSFocusRingTypeNone)
             self.field.setBackgroundColor_(FIELD_BG)
             self.field.setDrawsBackground_(True)
-            self.field.setPlaceholderString_("Ship the demo · study calc · keep Slack short")
+            self.field.setPlaceholderString_("Ship demo · study calc · keep Slack short")
             self.field.setTarget_(self); self.field.setAction_("startDay:")
             self.content.addSubview_(self.field)
             self.micBtn = self._pill(self._mic_label(), "speakGoals:", GLASS_BG,
-                                     AppKit.NSMakeRect(pad, 18, 124, 28), text_color=INK)
+                                     AppKit.NSMakeRect(pad, 14, 120, 26), text_color=INK)
             self.content.addSubview_(self.micBtn)
             self.content.addSubview_(self._pill("Start day", "startDay:", CREAM_CTA,
-                                                AppKit.NSMakeRect(W - pad - 96, 18, 96, 28), text_color=CREAM_TEXT))
+                                                AppKit.NSMakeRect(W - pad - 92, 14, 92, 26), text_color=CREAM_TEXT))
             self.panel.makeKeyAndOrderFront_(None)
             AppKit.NSApp.activateIgnoringOtherApps_(True)
             self.panel.makeFirstResponder_(self.field)
         elif self.tracker is not None:
             self.sessLabel = _label(self.status["session"],
-                                    AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 20),
+                                    AppKit.NSMakeRect(pad, top - 54, W - 2 * pad, 20),
                                     _serif(15, italic=False, weight="bold"), INK)
             self.lineLabel = _label(self.status["line"],
-                                    AppKit.NSMakeRect(pad, top - 78, W - 2 * pad, 15),
+                                    AppKit.NSMakeRect(pad, top - 72, W - 2 * pad, 15),
                                     _font(11, "regular"), MUTED)
             self.lineLabel.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
             self.content.addSubview_(self.sessLabel)
             self.content.addSubview_(self.lineLabel)
             goals = _label("Goals · " + (self.goals or ""),
-                           AppKit.NSMakeRect(pad, top - 100, W - 2 * pad, 15),
+                           AppKit.NSMakeRect(pad, top - 92, W - 2 * pad, 15),
                            _serif(11, italic=True), FAINT)
             goals.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
             self.content.addSubview_(goals)
             self.content.addSubview_(self._pill("View report", "viewReport:", GLASS_BG,
-                                                AppKit.NSMakeRect(W - pad - 215, 18, 105, 28), text_color=INK))
+                                                AppKit.NSMakeRect(W - pad - 200, 14, 96, 26), text_color=INK))
             self.content.addSubview_(self._pill("End my day", "endDay:", CREAM_CTA,
-                                                AppKit.NSMakeRect(W - pad - 100, 18, 100, 28), text_color=CREAM_TEXT))
+                                                AppKit.NSMakeRect(W - pad - 96, 14, 96, 26), text_color=CREAM_TEXT))
         else:
             msg = "Day closed — report is open." if self.day_done else "Not tracking."
-            self.content.addSubview_(_label(msg, AppKit.NSMakeRect(pad, top - 58, W - 2 * pad, 20),
-                                            _serif(15, italic=False, weight="regular"), INK))
+            self.content.addSubview_(_label(msg, AppKit.NSMakeRect(pad, top - 54, W - 2 * pad, 20),
+                                            _serif(14, italic=False, weight="regular"), INK))
             self.content.addSubview_(self._pill("View report", "viewReport:", GLASS_BG,
-                                                AppKit.NSMakeRect(W - pad - 208, 18, 100, 28), text_color=INK))
+                                                AppKit.NSMakeRect(W - pad - 200, 14, 96, 26), text_color=INK))
             q = self._pill("Quit", None, GLASS_BG,
-                           AppKit.NSMakeRect(W - pad - 100, 18, 100, 28), text_color=INK)
+                           AppKit.NSMakeRect(W - pad - 96, 14, 96, 26), text_color=INK)
             q.setTarget_(AppKit.NSApp); q.setAction_("terminate:")
             self.content.addSubview_(q)
 

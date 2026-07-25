@@ -93,10 +93,12 @@ Reply with ONLY this JSON, no other text:
  "note": "<one short sentence of evidence>"}
 No preamble, no markdown fences."""
 
-REPORT_SYS = """You are a focus coach. You get today's goals and a list of
+REPORT_SYS = """You are an elite cognitive performance coach. You get today's goals and a list of
 30-minute verdicts from work sessions. Be specific and direct — no filler,
 no praise padding. Reply with ONLY this JSON:
 {"headline": "<one sentence summarizing the day>",
+ "coach_verdict": "<two sentence sharp executive assessment of cognitive performance & flow>",
+ "tactical_rule": "<one single friction rule to eliminate drift tomorrow>",
  "goal_progress": [{"goal": "...", "time_min": 0, "verdict": "<one line>"}],
  "drift": [{"what": "...", "time_min": 0, "when": "..."}],
  "tomorrow": ["<specific action>", "<specific action>"]}
@@ -124,6 +126,8 @@ REPORT_SCHEMA = {
     "type": "object",
     "properties": {
         "headline": {"type": "string"},
+        "coach_verdict": {"type": "string"},
+        "tactical_rule": {"type": "string"},
         "goal_progress": {
             "type": "array",
             "items": {
@@ -150,7 +154,7 @@ REPORT_SCHEMA = {
         },
         "tomorrow": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["headline", "goal_progress", "drift", "tomorrow"],
+    "required": ["headline", "coach_verdict", "tactical_rule", "goal_progress", "drift", "tomorrow"],
 }
 
 

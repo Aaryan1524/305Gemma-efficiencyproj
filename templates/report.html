@@ -5,150 +5,299 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FocusLedger — Daily Report</title>
 <style>
-  /* Dark-only by design (WHOOP-style recovery dashboard). Palette validated
-     for the #14191f card surface: band, chroma, CVD, contrast. */
+  /* Timeless, Minimalist Luxury Theme — Pure Dark Matte with Serif Accent */
   :root {
-    --bg: #0b0e12; --card: #14191f; --line: #232b34;
-    --ink: #e8edf2; --muted: #8b96a3; --faint: #5c6672;
-    --good: #21a06a; --bad: #d0524b; --track: #1f262e;
+    --bg: #100e0d;
+    --line: #221f1c;
+    --ink: #f4f0ea;
+    --muted: #a09a8f;
+    --faint: #635d54;
+    --nude-accent: #d8c3a5;
+    --camel-accent: #c5a880;
+    --mocha-accent: #9e7b66;
+    --rust-bad: #a05a4e;
+    --track: #1c1917;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 36px 24px 80px; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 56px 24px 100px; }
 
-  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
-  .brand { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
-  .brand .dot { color: var(--good); }
-  .badge {
-    display: inline-flex; align-items: center; gap: 7px;
-    background: rgba(33,160,106,.12); color: #4cc793; border: 1px solid rgba(33,160,106,.35);
-    padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .06em;
+  /* Centered Minimal Header */
+  header.header-center { text-align: center; margin-bottom: 44px; }
+  .brand {
+    font-family: Georgia, "Playfair Display", "Times New Roman", serif;
+    font-weight: 700; font-size: 26px; letter-spacing: -0.01em; color: var(--ink);
   }
-  .badge .live { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+  .brand .dot { color: var(--nude-accent); margin-left: 2px; }
+  .sub-badge {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.18em; color: var(--muted); margin-top: 6px;
+  }
 
-  .micro { font-size: 11px; font-weight: 700; text-transform: uppercase;
-           letter-spacing: .12em; color: var(--muted); }
+  .micro {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.16em; color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
 
-  /* hero: ring + stats */
-  .hero { display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center;
-          background: var(--card); border: 1px solid var(--line); border-radius: 18px;
-          padding: 26px 30px; }
-  .ringbox { position: relative; width: 210px; height: 210px; }
-  .ringbox svg { transform: rotate(-90deg); }
-  .ringbox .center { position: absolute; inset: 0; display: flex; flex-direction: column;
-                     align-items: center; justify-content: center; }
-  .score { font-size: 58px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
-           font-variant-numeric: tabular-nums; }
-  .score small { font-size: 22px; font-weight: 700; color: var(--muted); }
+  /* Top 3 Frameless Floating Circles (NO BOXES) */
+  .rings-frameless {
+    display: flex; align-items: center; justify-content: space-around;
+    margin-bottom: 52px; padding: 12px 0;
+  }
+  .ring-item { display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .ringbox-sm { position: relative; width: 144px; height: 144px; }
+  .ringbox-sm svg { transform: rotate(-90deg); }
+  .ringbox-sm .center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .score-sm {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 38px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; color: var(--ink);
+  }
+  .score-sm small { font-size: 16px; font-weight: 400; color: var(--muted); font-family: sans-serif; }
+  .ring-title {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--muted); margin-top: 16px;
+  }
 
-  .hero-right .headline { font-size: 21px; font-weight: 700; line-height: 1.35; margin: 6px 0 16px; }
-  .stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
-  .tile { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-  .tile .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
-  .goalsline { margin-top: 14px; color: var(--muted); font-size: 14px; }
-  .goalsline b { color: var(--ink); font-weight: 600; }
+  /* Headline & Executive Summary */
+  .summary-section { margin-bottom: 44px; text-align: center; }
+  .summary-section .headline {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24px; font-weight: 400; font-style: italic; line-height: 1.45; margin: 10px 0 16px; color: var(--ink);
+  }
+  .summary-section .coach-text {
+    color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 680px; margin: 0 auto;
+  }
 
-  h2.micro { margin: 34px 0 14px; }
+  /* Minimal Horizontal Stat Line (No Cards) */
+  .stat-line {
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    margin-bottom: 44px;
+  }
+  .stat-unit { text-align: center; }
+  .stat-unit .v {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  .stat-unit .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 
-  /* category bars */
-  .cats { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 8px 20px; }
-  .catrow { display: grid; grid-template-columns: 140px 1fr 64px; gap: 14px; align-items: center;
-            padding: 11px 0; border-top: 1px solid var(--line); }
+  h2.micro { margin: 44px 0 18px; }
+
+  /* Category breakdown */
+  .cats { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .catrow {
+    display: grid; grid-template-columns: 150px 1fr 64px; gap: 16px; align-items: center;
+    padding: 14px 0; border-top: 1px solid var(--line);
+  }
   .catrow:first-child { border-top: none; }
-  .catrow .name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
-  .catrow .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-  .catrow .bartrack { height: 10px; border-radius: 5px; background: var(--track); overflow: hidden; }
-  .catrow .barfill { height: 100%; border-radius: 5px; }
-  .catrow .min { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums;
-                 font-size: 14px; font-weight: 600; }
+  .catrow .name { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 10px; color: var(--ink); }
+  .catrow .swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .catrow .bartrack { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .catrow .barfill { height: 100%; border-radius: 3px; }
+  .catrow .min {
+    text-align: right; color: var(--muted); font-variant-numeric: tabular-nums;
+    font-size: 14px; font-weight: 600;
+  }
 
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-          padding: 18px 22px; margin-bottom: 14px; }
-
-  .row-goal { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0;
-              border-top: 1px solid var(--line); }
+  /* Goals List (No Box) */
+  .goals-list { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .row-goal {
+    display: flex; justify-content: space-between; gap: 16px; padding: 16px 0;
+    border-top: 1px solid var(--line);
+  }
   .row-goal:first-child { border-top: none; }
-  .row-goal .g { font-weight: 600; }
-  .row-goal .v { color: var(--muted); font-size: 14px; }
-  .row-goal .t { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+  .row-goal .g { font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 400; color: var(--ink); }
+  .row-goal .v { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+  .row-goal .t { color: var(--nude-accent); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; font-size: 13.5px; }
 
-  .session-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
-  .session-time { font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
-  .session-dur { color: var(--muted); font-size: 13px; font-weight: 700; }
-  .tick { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px; align-items: start;
-          padding: 12px 0; border-top: 1px solid var(--line); }
+  /* Sessions Dropdown List */
+  .session-group { border-top: 1px solid var(--line); margin-bottom: 16px; padding: 14px 0 6px; }
+  .session-head {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none; list-style: none; outline: none;
+    transition: opacity 0.2s ease;
+  }
+  .session-head::-webkit-details-marker { display: none; }
+  .session-head:hover { opacity: 0.85; }
+  .session-time { font-family: Georgia, "Times New Roman", serif; font-weight: 700; font-size: 17px; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .session-dur { color: var(--muted); font-size: 13px; font-weight: 600; }
+  .toggle-icon { font-size: 11px; color: var(--nude-accent); transition: transform 0.2s ease; display: inline-block; }
+  details[open] .toggle-icon { transform: rotate(90deg); }
+  .session-body { padding-top: 12px; margin-top: 8px; border-top: 1px stroke var(--line); }
+  .tick {
+    display: grid; grid-template-columns: 66px 1fr auto; gap: 14px; align-items: start;
+    padding: 14px 0; border-top: 1px solid var(--line);
+  }
   .tick:first-of-type { border-top: none; }
   .tick .clk { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 2px; }
-  .tick .act { font-weight: 600; font-size: 15px; }
-  .tick .note { color: var(--muted); font-size: 13px; margin-top: 2px; }
-  .chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800;
-          text-transform: uppercase; letter-spacing: .05em;
-          color: #0b0e12; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
-  .aligned { font-size: 12px; font-weight: 800; margin-top: 6px; text-align: right; }
-  .aligned.yes { color: #4cc793; }
-  .aligned.no { color: #e0736c; }
+  .tick .act { font-weight: 600; font-size: 15px; color: var(--ink); }
+  .tick .note { color: var(--muted); font-size: 13px; margin-top: 2px; font-style: italic; }
+  .chip {
+    display: inline-flex; align-items: center; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink); opacity: 0.85; padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+  }
+  .aligned { font-size: 11px; font-weight: 700; margin-top: 6px; text-align: right; text-transform: uppercase; letter-spacing: 0.05em; }
+  .aligned.yes { color: var(--nude-accent); }
+  .aligned.no { color: var(--rust-bad); }
 
-  .drift .card { border-left: 3px solid var(--bad); }
-  .drift .what { font-weight: 600; }
-  .drift .when { color: var(--muted); font-size: 13px; }
+  /* Drift List */
+  .drift-list { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .drift-item { padding: 14px 0; border-top: 1px solid var(--line); }
+  .drift-item:first-child { border-top: none; }
+  .drift-item .what { font-family: Georgia, "Times New Roman", serif; font-size: 16px; color: var(--ink); }
+  .drift-item .when { color: var(--muted); font-size: 13px; margin-top: 3px; }
 
-  ul.tomorrow { list-style: none; padding: 0; margin: 0; }
-  ul.tomorrow li { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-                   padding: 13px 18px 13px 44px; margin-bottom: 10px; position: relative; font-weight: 500; }
-  ul.tomorrow li::before { content: "→"; position: absolute; left: 18px; color: var(--good); font-weight: 800; }
+  /* Tactical Friction Rule */
+  .rule-section {
+    padding: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    margin-bottom: 40px; text-align: center;
+  }
+  .rule-section .r-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--nude-accent); }
+  .rule-section .r-body { font-family: Georgia, "Times New Roman", serif; font-size: 18px; font-style: italic; color: var(--ink); margin-top: 8px; }
 
-  footer { margin-top: 46px; color: var(--faint); font-size: 12.5px; text-align: center; }
+  ul.tomorrow { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  ul.tomorrow li {
+    padding: 16px 0 16px 28px; border-top: 1px solid var(--line); position: relative; font-size: 15px; color: var(--ink);
+  }
+  ul.tomorrow li:first-child { border-top: none; }
+  ul.tomorrow li::before { content: "—"; position: absolute; left: 0; color: var(--nude-accent); font-weight: 700; }
+
+  footer { margin-top: 64px; color: var(--faint); font-size: 12px; text-align: center; line-height: 1.6; }
   .empty { color: var(--muted); font-style: italic; }
 
   @media (max-width: 700px) {
-    .hero { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-    .stats { width: 100%; }
+    .rings-frameless { flex-direction: column; gap: 24px; }
+    .stat-line { flex-wrap: wrap; gap: 16px; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <header>
+  <!-- Mid Top Header -->
+  <header class="header-center">
     <div class="brand">Focus<span class="dot">●</span>Ledger</div>
-    <div class="badge"><span class="live"></span> 100% local · zero network</div>
+    <div class="sub-badge">100% LOCAL · DAILY REPORT</div>
   </header>
 
-  {% set ring_c = 565.49 %}
-  {% set ring_color = '#21a06a' if focus_score >= 70 else ('#bf8018' if focus_score >= 40 else '#d0524b') %}
-  <div class="hero">
-    <div class="ringbox">
-      <svg width="210" height="210" viewBox="0 0 210 210" role="img"
-           aria-label="Focus score {{ focus_score }} percent">
-        <circle cx="105" cy="105" r="90" fill="none" stroke="var(--track)" stroke-width="13"/>
-        <circle cx="105" cy="105" r="90" fill="none" stroke="{{ ring_color }}" stroke-width="13"
-                stroke-linecap="round"
-                stroke-dasharray="{{ (focus_score / 100 * ring_c) | round(1) }} {{ ring_c }}"/>
-      </svg>
-      <div class="center">
-        <div class="score">{{ focus_score }}<small>%</small></div>
-        <div class="micro">Focus score</div>
+  {% set ring_c = 345.57 %} {# Radius 55 #}
+
+  <!-- Top 3 Frameless Floating Circles (NO BOXES) -->
+  <div class="rings-frameless">
+    
+    <!-- Circle 1: Focus Score -->
+    <div class="ring-item">
+      <div class="ringbox-sm">
+        <svg width="144" height="144" viewBox="0 0 144 144" role="img">
+          <defs>
+            <linearGradient id="focusGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#F2EFE7" />
+              <stop offset="100%" stop-color="#C5A880" />
+            </linearGradient>
+          </defs>
+          <circle cx="72" cy="72" r="55" fill="none" stroke="var(--track)" stroke-width="8"/>
+          <circle cx="72" cy="72" r="55" fill="none" stroke="url(#focusGrad)" stroke-width="8"
+                  stroke-linecap="round"
+                  stroke-dasharray="{{ (focus_score / 100 * ring_c) | round(1) }} {{ ring_c }}"/>
+        </svg>
+        <div class="center">
+          <div class="score-sm">{{ focus_score }}<small>%</small></div>
+        </div>
       </div>
+      <div class="ring-title">FOCUS SCORE</div>
     </div>
-    <div class="hero-right">
-      <div class="micro">Today</div>
-      <div class="headline">{{ synthesis.headline or "No activity recorded today." }}</div>
-      <div class="stats">
-        <div class="tile"><div class="micro">Tracked</div>
-          <div class="v">{{ total_min // 60 }}h {{ total_min % 60 }}m</div></div>
-        <div class="tile"><div class="micro">On goal</div>
-          <div class="v">{{ aligned_min // 60 }}h {{ aligned_min % 60 }}m</div></div>
-        <div class="tile"><div class="micro">Drift</div>
-          <div class="v">{{ drift_min }}m</div></div>
+
+    <!-- Circle 2: Cognitive Strain -->
+    <div class="ring-item">
+      <div class="ringbox-sm">
+        <svg width="144" height="144" viewBox="0 0 144 144" role="img">
+          <defs>
+            <linearGradient id="strainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#D8C3A5" />
+              <stop offset="100%" stop-color="#9E7B66" />
+            </linearGradient>
+          </defs>
+          <circle cx="72" cy="72" r="55" fill="none" stroke="var(--track)" stroke-width="8"/>
+          <circle cx="72" cy="72" r="55" fill="none" stroke="url(#strainGrad)" stroke-width="8"
+                  stroke-linecap="round"
+                  stroke-dasharray="{{ (cognitive_strain / 21.0 * ring_c) | round(1) }} {{ ring_c }}"/>
+        </svg>
+        <div class="center">
+          <div class="score-sm">{{ cognitive_strain }}</div>
+        </div>
       </div>
-      {% if goals %}<div class="goalsline"><b>Goals:</b> {{ goals }}</div>{% endif %}
+      <div class="ring-title">STRAIN (0–21)</div>
+    </div>
+
+    <!-- Circle 3: Goal Completion -->
+    <div class="ring-item">
+      <div class="ringbox-sm">
+        <svg width="144" height="144" viewBox="0 0 144 144" role="img">
+          <defs>
+            <linearGradient id="goalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ECE6DC" />
+              <stop offset="100%" stop-color="#8C8275" />
+            </linearGradient>
+          </defs>
+          <circle cx="72" cy="72" r="55" fill="none" stroke="var(--track)" stroke-width="8"/>
+          <circle cx="72" cy="72" r="55" fill="none" stroke="url(#goalGrad)" stroke-width="8"
+                  stroke-linecap="round"
+                  stroke-dasharray="{{ (goal_completion / 100 * ring_c) | round(1) }} {{ ring_c }}"/>
+        </svg>
+        <div class="center">
+          <div class="score-sm">{{ goal_completion }}<small>%</small></div>
+        </div>
+      </div>
+      <div class="ring-title">GOALS MET</div>
+    </div>
+
+  </div>
+
+  <!-- Summary Section -->
+  <div class="summary-section">
+    <div class="headline">“{{ synthesis.headline or "No activity recorded today." }}”</div>
+    {% if synthesis.coach_verdict %}<div class="coach-text">{{ synthesis.coach_verdict }}</div>{% endif %}
+  </div>
+
+  <!-- Minimal Horizontal Stat Bar (No Boxes) -->
+  <div class="stat-line">
+    <div class="stat-unit">
+      <div class="v">{{ total_min // 60 }}h {{ total_min % 60 }}m</div>
+      <div class="lbl">Tracked</div>
+    </div>
+    <div class="stat-unit">
+      <div class="v">{{ aligned_min // 60 }}h {{ aligned_min % 60 }}m</div>
+      <div class="lbl">On Goal</div>
+    </div>
+    <div class="stat-unit">
+      <div class="v">{{ deep_min // 60 }}h {{ deep_min % 60 }}m</div>
+      <div class="lbl">Deep Work</div>
+    </div>
+    <div class="stat-unit">
+      <div class="v">{{ drift_min }}m</div>
+      <div class="lbl">Drift</div>
+    </div>
+    <div class="stat-unit">
+      <div class="v">{{ switches_per_hr }}</div>
+      <div class="lbl">Switches / Hr</div>
     </div>
   </div>
+
+  {% if synthesis.tactical_rule %}
+  <div class="rule-section">
+    <div class="r-title">Tactical Friction Rule</div>
+    <div class="r-body">“{{ synthesis.tactical_rule }}”</div>
+  </div>
+  {% endif %}
 
   {% if categories %}
   <h2 class="micro">Where the time went</h2>
@@ -166,7 +315,7 @@
 
   {% if synthesis.goal_progress %}
   <h2 class="micro">Goal progress</h2>
-  <div class="card">
+  <div class="goals-list">
     {% for g in synthesis.goal_progress %}
     <div class="row-goal">
       <div><div class="g">{{ g.goal }}</div><div class="v">{{ g.verdict }}</div></div>
@@ -179,37 +328,39 @@
   <h2 class="micro">Sessions</h2>
   {% if sessions %}
     {% for s in sessions %}
-    <div class="card">
-      <div class="session-head">
-        <div class="session-time">{{ s.start or "—" }} – {{ s.end or "open" }}</div>
+    <details class="session-group">
+      <summary class="session-head">
+        <div class="session-time"><span class="toggle-icon">▸</span> {{ s.start or "—" }} – {{ s.end or "open" }}</div>
         <div class="session-dur">{{ s.duration }}</div>
-      </div>
-      {% for c in s.checkpoints %}
-      <div class="tick">
-        <div class="clk">{{ c.t }}</div>
-        <div>
-          <div class="act">{{ c.activity }}</div>
-          <div class="note">{{ c.note }}</div>
+      </summary>
+      <div class="session-body">
+        {% for c in s.checkpoints %}
+        <div class="tick">
+          <div class="clk">{{ c.t }}</div>
+          <div>
+            <div class="act">{{ c.activity }}</div>
+            <div class="note">{{ c.note }}</div>
+          </div>
+          <div style="text-align:right">
+            <span class="chip" style="background: rgba(255,255,255,0.08)">{{ c.category | catlabel }}</span>
+            <div class="aligned {{ 'yes' if c.aligned else 'no' }}">{{ '✓ on goal' if c.aligned else '✕ off goal' }}</div>
+          </div>
         </div>
-        <div style="text-align:right">
-          <span class="chip" style="background: {{ c.category | catcolor }}">{{ c.category | catlabel }}</span>
-          <div class="aligned {{ 'yes' if c.aligned else 'no' }}">{{ '✓ on goal' if c.aligned else '✕ off goal' }}</div>
-        </div>
+        {% else %}
+        <div class="empty">No captured activity in this session.</div>
+        {% endfor %}
       </div>
-      {% else %}
-      <div class="empty">No captured activity in this session.</div>
-      {% endfor %}
-    </div>
+    </details>
     {% endfor %}
   {% else %}
-    <p class="empty">No sessions recorded.</p>
+    <p class="empty">No sessions recorded today.</p>
   {% endif %}
 
   {% if synthesis.drift %}
   <h2 class="micro">Drift</h2>
-  <div class="drift">
+  <div class="drift-list">
     {% for d in synthesis.drift %}
-    <div class="card">
+    <div class="drift-item">
       <div class="what">{{ d.what }}</div>
       <div class="when">{{ d.when }}{% if d.time_min %} · {{ d.time_min }} min{% endif %}</div>
     </div>
@@ -218,14 +369,14 @@
   {% endif %}
 
   {% if synthesis.tomorrow %}
-  <h2 class="micro">Tomorrow</h2>
+  <h2 class="micro">Tomorrow's Game Plan</h2>
   <ul class="tomorrow">
     {% for a in synthesis.tomorrow %}<li>{{ a }}</li>{% endfor %}
   </ul>
   {% endif %}
 
   <footer>
-    Every judgment on this page was made on-device by Gemma 3 12B via Ollama.
+    Every judgment on this page was made on-device by Gemma 3 12B via Ollama.<br>
     No screen data left this machine. Images were deleted the instant they were read.
   </footer>
 

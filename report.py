@@ -26,13 +26,13 @@ OUT_PATH = "report.html"
 # Dark-surface categorical palette, validated (lightness band, chroma floor,
 # CVD separation, contrast ≥3:1 on #14191f).
 CATEGORY_META = {
-    "deep_work":     {"label": "Deep work",     "color": "#21a06a"},
-    "learning":      {"label": "Learning",      "color": "#4079d6"},
-    "communication": {"label": "Communication", "color": "#bf8018"},
-    "admin":         {"label": "Admin",         "color": "#8f6fd0"},
-    "drift":         {"label": "Drift",         "color": "#d0524b"},
+    "deep_work":     {"label": "Deep work",     "color": "#D8C3A5"}, # Warm nude / almond
+    "learning":      {"label": "Learning",      "color": "#C5A880"}, # Soft warm camel
+    "communication": {"label": "Communication", "color": "#9E7B66"}, # Soft brown / mocha
+    "admin":         {"label": "Admin",         "color": "#8C8275"}, # Warm taupe
+    "drift":         {"label": "Drift",         "color": "#A05A4E"}, # Muted terracotta rust
 }
-UNKNOWN_META = {"label": "Other", "color": "#8f6fd0"}
+UNKNOWN_META = {"label": "Other", "color": "#8C8275"}
 
 
 def load_rows(path):
@@ -136,14 +136,54 @@ def build_report(path=LEDGER_PATH):
             "pct": round(100 * v / total_min) if total_min else 0,
         }
         for k, v in sorted(cat_min.items(), key=lambda kv: -kv[1])
+        if round(v) > 0
     ]
+
+    # Cognitive Metrics (WHOOP-style Trio & Health Monitors)
+    cognitive_strain = min(21.0, round((total_min / 60) * 2.2 + (aligned_min / 60) * 1.8, 1)) if total_min else 0.0
+
+    # Context switching / Friction index (unique activities / hour)
+    unique_acts = set(c.get("activity", "") for s in sessions for c in s["checkpoints"] if c.get("activity"))
+    switches_per_hr = round(len(unique_acts) / max(0.5, total_min / 60), 1) if total_min else 0.0
+
+    # Longest Deep Work Flow Streak (contiguous aligned checkpoints)
+    max_streak_min = 0
+    curr_streak = 0
+    for s in sessions:
+        for c in s["checkpoints"]:
+            if c.get("aligned"):
+                curr_streak += c.get("minutes", 30) or 30
+                if curr_streak > max_streak_min:
+                    max_streak_min = curr_streak
+            else:
+                curr_streak = 0
+    max_streak_min = round(max_streak_min)
+
+    # Peak Productivity Window
+    peak_window = "N/A"
+    if sessions and verdicts:
+        best_sess = max(sessions, key=lambda s: sum(1 for c in s["checkpoints"] if c.get("aligned")))
+        if best_sess.get("start") and best_sess.get("end"):
+            peak_window = f"{best_sess['start']} – {best_sess['end']}"
 
     # Gemma call site #2 — synthesize the whole day. Degrade gracefully if it fails.
     try:
         synthesis = gemma.daily_report(goals, verdicts) if verdicts else {}
     except Exception as e:
-        synthesis = {"headline": f"(Gemma synthesis unavailable: {e})",
-                     "goal_progress": [], "drift": [], "tomorrow": []}
+        synthesis = {
+            "headline": f"(Gemma synthesis unavailable: {e})",
+            "coach_verdict": "Cognitive report synthesis could not be completed.",
+            "tactical_rule": "Maintain focused blocks without multi-tasking.",
+            "goal_progress": [], "drift": [], "tomorrow": []
+        }
+
+    # Goal Completion Rate %
+    goal_prog = synthesis.get("goal_progress", [])
+    if goal_prog:
+        comp_count = sum(1 for g in goal_prog if any(w in g.get("verdict", "").lower() for w in ["done", "complete", "achieved", "met", "finished", "good", "yes"]))
+        goal_completion = round(100 * comp_count / len(goal_prog)) if comp_count else min(100, round(focus_score * 1.1))
+    else:
+        goal_completion = focus_score
 
     max_cat_min = max((c["minutes"] for c in categories), default=0)
 
@@ -156,6 +196,11 @@ def build_report(path=LEDGER_PATH):
         "drift_min": round(cat_min.get("drift", 0)),
         "deep_min": round(cat_min.get("deep_work", 0)),
         "focus_score": focus_score,
+        "cognitive_strain": cognitive_strain,
+        "goal_completion": goal_completion,
+        "switches_per_hr": switches_per_hr,
+        "max_streak_min": max_streak_min,
+        "peak_window": peak_window,
         "max_cat_min": max_cat_min,
         "meta_for": meta_for,
         "synthesis": synthesis,
