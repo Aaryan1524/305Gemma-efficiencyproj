@@ -16,24 +16,24 @@ from collections import defaultdict
 from jinja2 import Environment, FileSystemLoader
 
 import gemma
+import paths
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-LEDGER_PATH = os.path.join(BASE, "ledger.jsonl")
+LEDGER_PATH = paths.LEDGER_PATH
 TEMPLATE_DIR = os.path.join(BASE, "templates")
 TEMPLATE_NAME = "report.html"
-OUT_PATH = os.path.join(BASE, "report.html")
+OUT_PATH = paths.REPORT_PATH
 
-# Category → display label + accent color. Kept in sync with CHECKPOINT_SYS.
-# Dark-surface categorical palette, validated (lightness band, chroma floor,
-# CVD separation, contrast ≥3:1 on #14191f).
+# Category → display label + color. Colors are CSS variables defined in the
+# template (Apple system colors, with light and dark variants).
 CATEGORY_META = {
-    "deep_work":     {"label": "Deep work",     "color": "#D8C3A5"}, # Warm nude / almond
-    "learning":      {"label": "Learning",      "color": "#C5A880"}, # Soft warm camel
-    "communication": {"label": "Communication", "color": "#9E7B66"}, # Soft brown / mocha
-    "admin":         {"label": "Admin",         "color": "#8C8275"}, # Warm taupe
-    "drift":         {"label": "Drift",         "color": "#A05A4E"}, # Muted terracotta rust
+    "deep_work":     {"label": "Deep work",     "color": "var(--blue)"},
+    "learning":      {"label": "Learning",      "color": "var(--purple)"},
+    "communication": {"label": "Communication", "color": "var(--green)"},
+    "admin":         {"label": "Admin",         "color": "var(--gray)"},
+    "drift":         {"label": "Drift",         "color": "var(--orange)"},
 }
-UNKNOWN_META = {"label": "Other", "color": "#8C8275"}
+UNKNOWN_META = {"label": "Other", "color": "var(--gray)"}
 
 
 def load_rows(path):
@@ -45,7 +45,9 @@ def load_rows(path):
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                row = json.loads(line)
+                if isinstance(row, dict):
+                    rows.append(row)
             except ValueError:
                 continue
     return rows
@@ -118,9 +120,9 @@ def _disp_min(val):
     return max(1, round(val)) if val > 0 else 0
 
 
-def build_report(path=LEDGER_PATH):
+def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False):
     """Assemble everything the template needs: facts from the ledger + Gemma's synthesis."""
-    rows = load_rows(path)
+    rows = paths.rows_for_day(load_rows(path), day)
     goals = latest_goals(rows)
     sessions = build_sessions(rows)
     verdicts = all_verdicts(sessions)
@@ -158,6 +160,7 @@ def build_report(path=LEDGER_PATH):
     max_streak_min = 0
     curr_streak = 0
     for s in sessions:
+        curr_streak = 0
         for c in s["checkpoints"]:
             if c.get("aligned"):
                 curr_streak += c.get("minutes", 30) or 30
@@ -178,26 +181,31 @@ def build_report(path=LEDGER_PATH):
 
     # Gemma call site #2 — synthesize the whole day. Degrade gracefully if it fails.
     try:
-        synthesis = gemma.daily_report(goals, verdicts) if verdicts else {}
+        synthesis = gemma.daily_report(goals, verdicts) if verdicts and not offline else {
+            "headline": "A sample day, by the numbers" if demo and verdicts else ("Recorded activity, by the numbers" if verdicts else "No activity recorded today.")
+        }
     except Exception as e:
         synthesis = {
-            "headline": f"(Gemma synthesis unavailable: {e})",
+            "headline": "Gemma synthesis unavailable; showing recorded activity only",
             "coach_verdict": "Cognitive report synthesis could not be completed.",
             "tactical_rule": "Maintain focused blocks without multi-tasking.",
             "goal_progress": [], "drift": [], "tomorrow": []
         }
 
-    # Goal Completion Rate %
-    goal_prog = synthesis.get("goal_progress", [])
-    if goal_prog:
-        comp_count = sum(1 for g in goal_prog if any(w in g.get("verdict", "").lower() for w in ["done", "complete", "achieved", "met", "finished", "good", "yes"]))
-        goal_completion = round(100 * comp_count / len(goal_prog)) if comp_count else min(100, round(focus_score * 1.1))
-    else:
-        goal_completion = focus_score
-
     max_cat_min = max((c["minutes"] for c in categories), default=0)
 
+    from datetime import datetime
+    stamp = next((row.get("date") for row in reversed(rows) if row.get("type") == "goals" and row.get("date")), None)
+    try:
+        day = datetime.strptime(stamp, "%Y-%m-%d") if stamp else datetime.now()
+    except ValueError:
+        day = datetime.now()
+
     return {
+        "demo": demo,
+        "offline": offline,
+        "report_date": f"{day:%A, %B} {day.day}",
+        "model_name": gemma.get_model(),
         "goals": goals,
         "sessions": sessions,
         "categories": categories,
@@ -207,7 +215,7 @@ def build_report(path=LEDGER_PATH):
         "deep_min": _disp_min(cat_min.get("deep_work", 0)),
         "focus_score": focus_score,
         "cognitive_strain": cognitive_strain,
-        "goal_completion": goal_completion,
+        "drift_pct": round(100 * cat_min.get("drift", 0) / total_min) if total_min else 0,
         "switches_per_hr": switches_per_hr,
         "max_streak_min": max_streak_min,
         "peak_window": peak_window,
@@ -222,6 +230,7 @@ def render(data, out_path=OUT_PATH):
     env.filters["catlabel"] = lambda k: meta_for(k)["label"]
     env.filters["catcolor"] = lambda k: meta_for(k)["color"]
     html = env.get_template(TEMPLATE_NAME).render(**data)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as f:
         f.write(html)
     return out_path
@@ -233,18 +242,22 @@ def main():
     ap.add_argument("--out", default=OUT_PATH, help="output HTML path")
     ap.add_argument("--open", action="store_true", help="open the report in a browser")
     ap.add_argument("--json", action="store_true", help="also print the synthesis JSON")
+    ap.add_argument("--date", help="report day (YYYY-MM-DD); defaults to latest recorded day")
+    ap.add_argument("--demo", action="store_true", help="label synthetic data")
+    ap.add_argument("--offline", action="store_true", help="skip model synthesis")
     args = ap.parse_args()
 
     if not os.path.exists(args.ledger):
         raise SystemExit(f"No ledger at {args.ledger}. Run focusledger.py first, or seed.py for a demo.")
 
-    data = build_report(args.ledger)
+    data = build_report(args.ledger, day=args.date, demo=args.demo, offline=args.offline)
     if args.json:
         print(json.dumps(data["synthesis"], indent=2))
     out = render(data, args.out)
     print(f"📄 wrote {out}  ({len(data['sessions'])} sessions, {data['total_min']} min tracked)")
     if args.open:
-        webbrowser.open("file://" + os.path.abspath(out))
+        if not webbrowser.open("file://" + os.path.abspath(out)):
+            raise SystemExit("Report saved, but the browser could not be opened.")
 
 
 if __name__ == "__main__":

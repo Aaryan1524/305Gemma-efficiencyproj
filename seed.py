@@ -1,13 +1,4 @@
-"""Seed data for the demo report.
-
-Your morning is real captured data; a hackathon demo also wants a full day.
-This generates plausible evening + night sessions and either (a) writes a
-complete self-contained sample ledger for the repo, or (b) appends the seeded
-sessions onto a copy of your real ledger so the report shows a whole day.
-
-Be honest about it in the writeup: the demo report combines real captured
-data with seeded sessions. Judges respect that and it costs nothing.
-"""
+"""Generate synthetic sample ledger data without reading personal activity."""
 
 import argparse
 import json
@@ -89,22 +80,15 @@ def write_rows(rows, path):
 
 def main():
     ap = argparse.ArgumentParser(description="Generate demo ledger data.")
-    ap.add_argument("--base", help="real ledger to build on (keeps its morning, adds evening+night)")
     ap.add_argument("--out", default="ledger.sample.jsonl", help="output ledger path")
     args = ap.parse_args()
 
-    if args.base:
-        rows = load_rows(args.base)
-        # Keep the real day as-is, just append seeded later sessions.
-        rows = rows + EVENING + NIGHT
-    else:
-        rows = [{"type": "goals", "date": "2026-07-24", "goals": GOALS}] + MORNING + EVENING + NIGHT
+    rows = [{"type": "goals", "date": "2026-07-24", "goals": GOALS}] + MORNING + EVENING + NIGHT
 
     write_rows(rows, args.out)
     n_sessions = sum(1 for r in rows if r.get("type") == "session_open")
     print(f"🌱 wrote {args.out}  ({n_sessions} sessions)")
-    if args.base:
-        print("   (kept your real captured morning, appended seeded evening + night)")
+
 
 
 if __name__ == "__main__":

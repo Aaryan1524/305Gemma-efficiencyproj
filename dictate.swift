@@ -128,7 +128,6 @@ let task = rec.recognitionTask(with: req) { result, error in
         if s != text {
             text = s
             lastChange = Date()
-            note("… \(s)")
             publish(s)
         }
         if r.isFinal { finished = true }

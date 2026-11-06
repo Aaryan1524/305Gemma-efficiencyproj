@@ -9,6 +9,7 @@ import json
 import os
 import re
 
+import paths
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -16,7 +17,7 @@ OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 OLLAMA_PULL_URL = "http://localhost:11434/api/pull"
 TEMPERATURE = 0.2
 
-CONFIG_DIR = os.path.expanduser("~/Library/Application Support/FocusLedger")
+CONFIG_DIR = str(paths.DATA_DIR)
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
 # Every Gemma size FocusLedger offers: (ollama tag, label, download, min RAM in GB).
@@ -97,7 +98,12 @@ def check_ollama(timeout=1.5):
 
 
 def pull_model(tag, on_progress=None):
-    """Download a model through Ollama, reporting fraction complete (0..1)."""
+    """Download a model through Ollama, reporting overall fraction complete (0..1).
+
+    Ollama reports each layer on its own, so progress is summed across layers
+    and never allowed to move backwards when a new layer starts.
+    """
+    layers, best = {}, 0.0
     with requests.post(OLLAMA_PULL_URL, json={"model": tag, "stream": True},
                        stream=True, timeout=(5, None)) as r:
         r.raise_for_status()
@@ -107,8 +113,14 @@ def pull_model(tag, on_progress=None):
             d = json.loads(line)
             if d.get("error"):
                 raise RuntimeError(d["error"])
-            if on_progress and d.get("total"):
-                on_progress(d.get("completed", 0) / d["total"])
+            if d.get("digest") and d.get("total"):
+                layers[d["digest"]] = (d.get("completed", 0), d["total"])
+                total = sum(t for _, t in layers.values())
+                best = max(best, sum(c for c, _ in layers.values()) / total)
+                if on_progress:
+                    on_progress(min(best, 0.99))
+    if on_progress:
+        on_progress(1.0)
 
 
 def gemma(prompt, system="", fmt=None):
@@ -133,6 +145,7 @@ def gemma(prompt, system="", fmt=None):
             "Could not reach Ollama at " + OLLAMA_URL +
             ". Is it running? Start it with `ollama serve`."
         ) from e
+    r.raise_for_status()
     body = r.json()
     if "response" not in body:
         raise RuntimeError(body.get("error", "Ollama returned no response") +
@@ -147,9 +160,7 @@ def gemma_json(prompt, system="", schema=None):
     untrusted: it is whatever happened to be on screen, and if it contains
     instructions (a design brief, a chat with another AI, a tutorial) Gemma
     will follow those instead of classifying — it comes back with prose, or
-    with tidy JSON echoing the injected instruction. Constraining the reply
-    to a schema is what makes the classifier ignore it, and it is markedly
-    faster too, since the model can't ramble.
+    with tidy JSON echoing the injected instruction. A schema constrains format but cannot prevent semantic prompt injection.
 
     Fences and surrounding prose are still stripped below, because an
     unconstrained call (no schema) can wrap its JSON in markdown.
@@ -167,9 +178,8 @@ def gemma_json(prompt, system="", schema=None):
         return json.loads(candidate)
     except (ValueError, json.JSONDecodeError) as err:
         raise ValueError(
-            f"Failed to parse JSON from Gemma response: {err}\n"
-            f"Raw response was:\n{raw}"
-        ) from err
+            "Model returned invalid JSON; retry or choose another model."
+        ) from None
 
 
 CHECKPOINT_SYS = """You classify a 30-minute block of computer activity.

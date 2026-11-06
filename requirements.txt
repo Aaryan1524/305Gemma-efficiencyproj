@@ -1,5 +1,9 @@
-mss
-pyobjc-framework-Vision
-pyobjc-framework-Quartz
-requests
-jinja2
+# Direct dependencies; transitive versions are captured in requirements-lock.txt.
+mss==10.2.0
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Vision==12.2.2
+requests==2.34.2
+Jinja2==3.1.6
+pyobjc-framework-ScreenCaptureKit==12.2.2

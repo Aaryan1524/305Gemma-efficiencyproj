@@ -27,9 +27,9 @@ cat << 'PLIST' > "$APP/Contents/Info.plist"
   <key>CFBundleIdentifier</key>
   <string>com.focusledger.app</string>
   <key>CFBundleVersion</key>
-  <string>1.0.0</string>
+  <string>0.1.0</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.0</string>
+  <string>0.1.0</string>
   <key>CFBundleExecutable</key>
   <string>FocusLedger</string>
   <key>CFBundlePackageType</key>
@@ -39,7 +39,7 @@ cat << 'PLIST' > "$APP/Contents/Info.plist"
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSScreenCaptureUsageDescription</key>
-  <string>FocusLedger reads the focused window with on-device Apple Vision OCR and deletes every screenshot immediately.</string>
+  <string>FocusLedger reads the focused window with on-device Apple Vision OCR with screenshot pixels kept in memory.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>FocusLedger listens briefly when you click Speak goals to transcribe your daily goals on-device.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
@@ -48,12 +48,14 @@ cat << 'PLIST' > "$APP/Contents/Info.plist"
 </plist>
 PLIST
 
-cat << LAUNCHER > "$APP/Contents/MacOS/FocusLedger"
+cat << 'LAUNCHER' > "$APP/Contents/MacOS/FocusLedger"
 #!/bin/bash
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
+# Resolve the repo from where this bundle lives, so moving the repo folder never breaks it.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/Applications/Ollama.app/Contents/Resources:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+PROJECT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$PROJECT_DIR"
 
-# Start local Ollama daemon in background if installed and not yet listening
+# Start the local Ollama daemon if it is installed and not yet listening.
 if command -v ollama >/dev/null 2>&1; then
   if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
     nohup ollama serve >/dev/null 2>&1 &
@@ -61,7 +63,11 @@ if command -v ollama >/dev/null 2>&1; then
   fi
 fi
 
-exec "$PROJECT_DIR/venv/bin/python" "$PROJECT_DIR/notch.py" "\$@"
+if [ ! -x "$PROJECT_DIR/venv/bin/python" ]; then
+  osascript -e 'display alert "FocusLedger isn'"'"'t set up yet" message "Open Terminal in the FocusLedger folder and run ./start.sh once."' >/dev/null 2>&1
+  exit 1
+fi
+exec "$PROJECT_DIR/venv/bin/python" "$PROJECT_DIR/notch.py" "$@"
 LAUNCHER
 
 chmod +x "$APP/Contents/MacOS/FocusLedger"
