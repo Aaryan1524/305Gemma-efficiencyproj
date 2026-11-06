@@ -16,12 +16,13 @@ from collections import defaultdict
 from jinja2 import Environment, FileSystemLoader
 
 import gemma
+import paths
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-LEDGER_PATH = os.path.join(BASE, "ledger.jsonl")
+LEDGER_PATH = paths.LEDGER_PATH
 TEMPLATE_DIR = os.path.join(BASE, "templates")
 TEMPLATE_NAME = "report.html"
-OUT_PATH = os.path.join(BASE, "report.html")
+OUT_PATH = paths.REPORT_PATH
 
 # Category → display label + color. Colors are CSS variables defined in the
 # template (Apple system colors, with light and dark variants).
@@ -44,7 +45,9 @@ def load_rows(path):
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                row = json.loads(line)
+                if isinstance(row, dict):
+                    rows.append(row)
             except ValueError:
                 continue
     return rows
@@ -117,9 +120,9 @@ def _disp_min(val):
     return max(1, round(val)) if val > 0 else 0
 
 
-def build_report(path=LEDGER_PATH):
+def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False):
     """Assemble everything the template needs: facts from the ledger + Gemma's synthesis."""
-    rows = load_rows(path)
+    rows = paths.rows_for_day(load_rows(path), day)
     goals = latest_goals(rows)
     sessions = build_sessions(rows)
     verdicts = all_verdicts(sessions)
@@ -157,6 +160,7 @@ def build_report(path=LEDGER_PATH):
     max_streak_min = 0
     curr_streak = 0
     for s in sessions:
+        curr_streak = 0
         for c in s["checkpoints"]:
             if c.get("aligned"):
                 curr_streak += c.get("minutes", 30) or 30
@@ -177,10 +181,10 @@ def build_report(path=LEDGER_PATH):
 
     # Gemma call site #2 — synthesize the whole day. Degrade gracefully if it fails.
     try:
-        synthesis = gemma.daily_report(goals, verdicts) if verdicts else {}
+        synthesis = gemma.daily_report(goals, verdicts) if verdicts and not offline else {}
     except Exception as e:
         synthesis = {
-            "headline": f"(Gemma synthesis unavailable: {e})",
+            "headline": "Gemma synthesis unavailable; showing recorded activity only",
             "coach_verdict": "Cognitive report synthesis could not be completed.",
             "tactical_rule": "Maintain focused blocks without multi-tasking.",
             "goal_progress": [], "drift": [], "tomorrow": []
@@ -204,6 +208,8 @@ def build_report(path=LEDGER_PATH):
         day = datetime.now()
 
     return {
+        "demo": demo,
+        "offline": offline,
         "report_date": f"{day:%A, %B} {day.day}",
         "model_name": gemma.get_model(),
         "goals": goals,
@@ -230,6 +236,7 @@ def render(data, out_path=OUT_PATH):
     env.filters["catlabel"] = lambda k: meta_for(k)["label"]
     env.filters["catcolor"] = lambda k: meta_for(k)["color"]
     html = env.get_template(TEMPLATE_NAME).render(**data)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as f:
         f.write(html)
     return out_path
@@ -241,18 +248,22 @@ def main():
     ap.add_argument("--out", default=OUT_PATH, help="output HTML path")
     ap.add_argument("--open", action="store_true", help="open the report in a browser")
     ap.add_argument("--json", action="store_true", help="also print the synthesis JSON")
+    ap.add_argument("--date", help="report day (YYYY-MM-DD); defaults to latest recorded day")
+    ap.add_argument("--demo", action="store_true", help="label synthetic data")
+    ap.add_argument("--offline", action="store_true", help="skip model synthesis")
     args = ap.parse_args()
 
     if not os.path.exists(args.ledger):
         raise SystemExit(f"No ledger at {args.ledger}. Run focusledger.py first, or seed.py for a demo.")
 
-    data = build_report(args.ledger)
+    data = build_report(args.ledger, day=args.date, demo=args.demo, offline=args.offline)
     if args.json:
         print(json.dumps(data["synthesis"], indent=2))
     out = render(data, args.out)
     print(f"📄 wrote {out}  ({len(data['sessions'])} sessions, {data['total_min']} min tracked)")
     if args.open:
-        webbrowser.open("file://" + os.path.abspath(out))
+        if not webbrowser.open("file://" + os.path.abspath(out)):
+            raise SystemExit("Report saved, but the browser could not be opened.")
 
 
 if __name__ == "__main__":

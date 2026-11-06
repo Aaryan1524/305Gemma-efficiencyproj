@@ -8,7 +8,6 @@ gates the capture pipeline below it.
 import hashlib
 import json
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -16,11 +15,10 @@ import time
 from datetime import date, datetime, timedelta
 
 from AppKit import NSWorkspace
-import mss
-import mss.tools
 import Quartz
 
 import gemma
+import paths
 import vision_ocr
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +35,7 @@ else:
     IDLE_CLOSE = 600
     CHECKPOINT_INTERVAL = 1800    # 30 min in real use
 
-LEDGER_PATH = os.environ.get("FL_LEDGER_PATH") or os.path.join(BASE, "ledger.jsonl")
+LEDGER_PATH = paths.LEDGER_PATH
 
 
 def idle_seconds():
@@ -58,15 +56,15 @@ def frontmost():
     """
     app = NSWorkspace.sharedWorkspace().frontmostApplication()
     name = app.localizedName() if app else "Unknown"
-    title = ""
+    pid = app.processIdentifier() if app else None
     wins = Quartz.CGWindowListCopyWindowInfo(
         Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
         Quartz.kCGNullWindowID)
-    for w in wins:
-        if w.get("kCGWindowOwnerName") == name and w.get("kCGWindowName"):
-            title = w["kCGWindowName"]
-            break
-    return name, title
+    for w in wins or []:
+        if (w.get("kCGWindowOwnerPID") == pid and w.get("kCGWindowLayer") == 0
+                and w.get("kCGWindowName") and w.get("kCGWindowNumber")):
+            return name, w["kCGWindowName"], w["kCGWindowNumber"]
+    return name, "", None
 
 
 # Refuse to look at anything sensitive. When blocked we capture nothing at all.
@@ -107,45 +105,33 @@ def _on_sigusr1(signum, frame):
 
 def capture_tick(force=False):
     """One capture opportunity: identify the focused window, respect the blocklist,
-    screenshot only on change, OCR it, delete the image immediately, buffer the text.
+    capture one window on change, OCR in memory, and buffer the text.
 
-    The image exists on disk for the length of one OCR call and no longer. What
-    survives is text, and only until the next checkpoint turns it into a verdict.
+    Pixels never reach disk. Text survives in memory until a checkpoint succeeds.
     """
     global _last_hash
-    app, title = frontmost()
-    if is_blocked(app, title):
-        print(f"⛔ blocked: {app}")
+    app, title, window_id = frontmost()
+    if window_id is None or is_blocked(app, title):
         return
-    print(f"👁 {app} — {title}")
-
-    os.makedirs(CAPTURE_DIR, exist_ok=True)
-    with mss.MSS() as sct:
-        img = sct.grab(sct.monitors[1])
-    digest = hashlib.md5(img.rgb).hexdigest()
+    # IncludingWindow captures only this window, never a display fallback.
+    img = Quartz.CGWindowListCreateImage(
+        Quartz.CGRectNull, Quartz.kCGWindowListOptionIncludingWindow,
+        window_id, Quartz.kCGWindowImageBoundsIgnoreFraming)
+    if img is None:
+        return
+    pixels = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(img))
+    digest = hashlib.sha256(bytes(pixels)).hexdigest()
     if not force and digest == _last_hash:
-        print("· unchanged")
         return
+    text = vision_ocr.ocr_image(img)
     _last_hash = digest
-
     now = datetime.now()
-    path = os.path.join(CAPTURE_DIR, f"capture_{now:%Y%m%d_%H%M%S_%f}.png")
-    mss.tools.to_png(img.rgb, img.size, output=path)
-    try:
-        text = vision_ocr.ocr(path)
-    finally:
-        # Delete the image no matter what — an OCR failure must not leave pixels behind.
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-
     BUFFER.append({"t": _hms(now), "app": app, "title": title, "text": text})
     if len(BUFFER) > MAX_BUFFER:
         # Thin by half rather than dropping the oldest: the verdict should
         # describe the whole block, not just its last few minutes.
         del BUFFER[::2]
-    print(f"🔎 ocr'd ({len(text)} chars) → image deleted | buffer={len(BUFFER)}")
+    print("🔎 window read")
 
 
 def _hms(t):
@@ -164,19 +150,16 @@ def _duration(start, end):
 def append_ledger(obj):
     """Append one JSON object as a line to the ledger. This is the only thing
     that ever touches disk — verdicts and session markers, never pixels or raw text."""
+    os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)
+    obj.setdefault("date", date.today().isoformat())
     with open(LEDGER_PATH, "a") as f:
         f.write(json.dumps(obj) + "\n")
 
 
 def reset_todays_ledger():
-    """Archive any existing ledger.jsonl to ledger.prev.jsonl and start fresh."""
-    if os.path.exists(LEDGER_PATH):
-        prev = os.path.join(os.path.dirname(os.path.abspath(LEDGER_PATH)), "ledger.prev.jsonl")
-        try:
-            shutil.copy2(LEDGER_PATH, prev)
-            os.remove(LEDGER_PATH)
-        except OSError:
-            pass
+    """Preserve history when the UI starts another session."""
+    # History is append-only; a subsequent goals row starts the new session.
+    return
 
 
 def load_todays_goals():
@@ -204,7 +187,7 @@ def prompt_goals():
     """Get today's goals: reuse today's if present, otherwise ask once and record them."""
     existing = load_todays_goals()
     if existing:
-        print(f"📌 today's goals (from ledger): {existing}")
+        print("📌 today's goals loaded")
         return existing
     print("What are your goals for today? (one line, be specific — vague goals read as drift)")
     goals = input("goals> ").strip()
@@ -234,19 +217,19 @@ def run_checkpoint(goals, since=None, until=None, reason=""):
     print(f"🧠 checkpoint{tag}: judging {n} samples with Gemma…")
     try:
         verdict = gemma.checkpoint(goals, BUFFER)
-    except Exception as e:
-        print(f"⚠ checkpoint failed ({e}); keeping buffer for next attempt")
+    except Exception:
+        print("⚠ checkpoint failed; keeping buffer for next attempt")
         return False
     append_ledger({
         "type": "checkpoint",
+        "date": (since or now).date().isoformat(),
         "t": _hms(now),
         "samples": n,
         "minutes": minutes,
         "verdict": verdict,
     })
     BUFFER.clear()
-    print(f"📒 verdict: {verdict.get('category')} | aligned={verdict.get('aligned')} "
-          f"| {verdict.get('activity')}")
+    print("📒 verdict recorded")
     return True
 
 
@@ -264,7 +247,7 @@ def main():
 
     signal.signal(signal.SIGUSR1, _on_sigusr1)
 
-    os.makedirs(CAPTURE_DIR, exist_ok=True)
+    paths.initialize()
     print(f"FocusLedger session manager starting (DEV_MODE={DEV_MODE})")
 
     goals = prompt_goals()
@@ -272,11 +255,21 @@ def main():
     try:
         gemma.warmup()
     except Exception as e:
-        print(f"⚠ Gemma warmup failed ({e}). Is `ollama serve` running? Continuing anyway.")
+        print("⚠ Gemma warmup failed. Check Ollama; continuing.")
     print("ready. Tracking sessions — Ctrl-C to stop.\n")
 
+    tracking_day = date.today()
     try:
         while True:
+            if date.today() != tracking_day:
+                boundary = datetime.combine(date.today(), datetime.min.time())
+                if BUFFER and not run_checkpoint(goals, since=last_checkpoint, until=boundary, reason="day boundary"):
+                    time.sleep(POLL_INTERVAL)
+                    continue
+                if session:
+                    append_ledger({"type": "session_close", "date": tracking_day.isoformat(), "t": "24:00:00", "duration": _duration(session["start"], boundary)})
+                print("FL_DAY_ENDED", flush=True)
+                return
             idle = idle_seconds()
             now = datetime.now()
 
@@ -290,8 +283,10 @@ def main():
                 if idle >= IDLE_CLOSE:
                     # Work ended ~idle seconds ago; don't count the idle gap as activity.
                     last_active = max(now - timedelta(seconds=idle), session["start"])
-                    run_checkpoint(goals, since=last_checkpoint, until=last_active,
-                                   reason="session close")  # flush before closing
+                    if BUFFER and not run_checkpoint(goals, since=last_checkpoint, until=last_active, reason="session close"):
+                        print("FL_FLUSH_FAILED", flush=True)
+                        time.sleep(POLL_INTERVAL)
+                        continue
                     dur = _duration(session["start"], last_active)
                     append_ledger({"type": "session_close", "t": _hms(last_active), "duration": dur})
                     print(f"■ session closed {_hms(last_active)} (duration {dur})")
@@ -299,8 +294,8 @@ def main():
                 elif idle < ACTIVE_WINDOW:
                     capture_tick()
                     if (now - last_checkpoint).total_seconds() >= CHECKPOINT_INTERVAL:
-                        run_checkpoint(goals, since=last_checkpoint, until=now)
-                        last_checkpoint = now
+                        if run_checkpoint(goals, since=last_checkpoint, until=now):
+                            last_checkpoint = now
 
             # Sleep in 0.25s slices so SIGUSR1 (live report flush) is serviced immediately
             waited = 0.0
@@ -315,9 +310,10 @@ def main():
                         print(f"▶ session opened {_hms(now)}")
                     if not BUFFER:
                         capture_tick(force=True)
-                    run_checkpoint(goals, since=last_checkpoint or now, until=now, reason="live report")
-                    last_checkpoint = now
-                    print("✓ checkpoint flushed")
+                    ok = not BUFFER or run_checkpoint(goals, since=last_checkpoint or now, until=now, reason="live report")
+                    if ok:
+                        last_checkpoint = now
+                    print("FL_FLUSH_OK" if ok else "FL_FLUSH_FAILED", flush=True)
                     break
                 time.sleep(0.25)
                 waited += 0.25
@@ -326,7 +322,10 @@ def main():
             now = datetime.now()
             if not BUFFER:
                 capture_tick(force=True)
-            run_checkpoint(goals, since=last_checkpoint, until=now, reason="shutdown")  # don't lose the last buffer
+            ok = not BUFFER or run_checkpoint(goals, since=last_checkpoint, until=now, reason="shutdown")
+            if not ok:
+                print("FL_FLUSH_FAILED", flush=True)
+                raise SystemExit(2)
             dur = _duration(session["start"], now)
             append_ledger({"type": "session_close", "t": _hms(now), "duration": dur})
             print(f"\n■ session closed {_hms(now)} (duration {dur})")

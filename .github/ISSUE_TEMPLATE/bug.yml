@@ -1,0 +1,20 @@
+name: Bug report
+description: Report a reproducible problem using synthetic data.
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach personal ledgers, OCR, or private screenshots. Security issues: see SECURITY.md."
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS, chip, Python, Ollama/model versions, and commit.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected behavior, and actual behavior
+      description: Include a minimal synthetic reproduction and redacted diagnostics.
+    validations:
+      required: true

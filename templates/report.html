@@ -136,11 +136,13 @@
 </style>
 </head>
 <body>
+<div style="padding:12px;text-align:center">{% if demo %}<strong>DEMO — synthetic activity only.</strong> {% endif %}Alpha: goal alignment is an AI estimate. Derived metrics are experimental, not validated measurements.{% if offline %} Model synthesis skipped.{% endif %}</div>
 <div class="wrap">
 
   <div class="eyebrow">FocusLedger</div>
   <h1>Daily Report</h1>
   <div class="date">{{ report_date }}</div>
+  {% if goals %}<p><strong>Stated goals:</strong> {{ goals }}</p>{% endif %}
 
   <div class="hero">
     <p class="headline">{{ synthesis.headline or "No activity recorded today." }}</p>
@@ -261,8 +263,8 @@
   {% endif %}
 
   <footer>
-    Every judgment on this page was made on this Mac by {{ model_name }} through Ollama.<br>
-    Nothing left your device. Screenshots were deleted the moment they were read.
+    {% if offline %}Synthetic recorded verdicts; model synthesis skipped.{% else %}AI estimates use {{ model_name }} through local Ollama.{% endif %}<br>
+    Capture pixels are processed in memory. Reports may contain sensitive summaries.
   </footer>
 
 </div>

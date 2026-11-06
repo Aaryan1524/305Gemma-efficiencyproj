@@ -14,6 +14,7 @@ cd "$(dirname "$0")"
 
 echo "==> compiling dictate"
 swiftc dictate.swift -o dictate \
+  -module-cache-path "${FL_SWIFT_CACHE:-${TMPDIR:-/tmp}/focusledger-swift-cache}" \
   -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist \
   -Xlinker dictate-Info.plist
 codesign --force --sign - dictate

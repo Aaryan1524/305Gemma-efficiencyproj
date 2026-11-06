@@ -1,0 +1,14 @@
+[project]
+name = "focusledger"
+version = "0.1.0a1"
+description = "Local macOS activity reflection against your daily goals"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+readme = "README.md"
+
+[tool.ruff]
+target-version = "py312"
+exclude = ["venv"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

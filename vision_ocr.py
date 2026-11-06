@@ -24,6 +24,11 @@ def ocr(path):
     if img is None:
         return ""
 
+    return ocr_image(img)
+
+
+def ocr_image(img):
+    """Read an in-memory CGImage; no screenshot is written to disk."""
     req = Vision.VNRecognizeTextRequest.alloc().init()
     req.setRecognitionLevel_(1)  # 1 = fast, 0 = accurate
     handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(img, None)

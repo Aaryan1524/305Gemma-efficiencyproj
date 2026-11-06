@@ -19,18 +19,25 @@ RESET="\033[0m"
 echo -e "${BOLD}FocusLedger${RESET} · 100% Local On-Device Work Session Tracker"
 echo "------------------------------------------------------------"
 
-# 1. Python virtual environment + dependencies
-if [ ! -x "venv/bin/python" ]; then
-  echo -e "${CYAN}==> Creating Python virtual environment (venv)...${RESET}"
-  python3 -m venv venv
-  ./venv/bin/pip install -q -r requirements.txt
-else
-  # Fast check that core packages import cleanly
-  if ! ./venv/bin/python -c "import mss, Quartz, Vision, requests, jinja2, AppKit" >/dev/null 2>&1; then
-    echo -e "${CYAN}==> Installing Python dependencies...${RESET}"
-    ./venv/bin/pip install -q -r requirements.txt
-  fi
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo "FocusLedger requires macOS." >&2
+  exit 1
 fi
+PYTHON_BIN="${FL_PYTHON:-python3.12}"
+if [ ! -x "venv/bin/python" ]; then
+  command -v "$PYTHON_BIN" >/dev/null || { echo "Install Python 3.12, then retry." >&2; exit 1; }
+  "$PYTHON_BIN" -m venv venv
+fi
+./venv/bin/python -c 'import sys; assert sys.version_info[:2] == (3, 12), "Recreate venv with Python 3.12"'
+./venv/bin/python -m pip install -q -r requirements-lock.txt
+MODE="${1:-}"
+if [ "$MODE" = "--verify" ] || [ "$MODE" = "--check" ]; then
+  exec ./venv/bin/python verify_setup.py
+elif [ "$MODE" = "--demo-report" ]; then
+  OUT="$(./venv/bin/python -c 'import paths; print(paths.DATA_DIR / "report.demo.html")')"
+  exec ./venv/bin/python report.py ledger.sample.jsonl --out "$OUT" --demo --offline --open
+fi
+./venv/bin/python -c 'import paths; paths.initialize()'
 
 # 2. Build on-device voice helper (Dictate.app) if missing
 if [ ! -x "Dictate.app/Contents/MacOS/dictate" ]; then
@@ -63,12 +70,7 @@ fi
 
 # 5. Handle CLI flags
 MODE="${1:-}"
-if [ "$MODE" = "--verify" ] || [ "$MODE" = "--check" ]; then
-  exec ./venv/bin/python verify_setup.py
-elif [ "$MODE" = "--demo-report" ]; then
-  ./venv/bin/python seed.py --out ledger.demo.jsonl
-  exec ./venv/bin/python report.py ledger.demo.jsonl --out report.demo.html --open
-elif [ "$MODE" = "--quick" ]; then
+if [ "$MODE" = "--quick" ]; then
   echo -e "${GREEN}==> Launching FocusLedger Notch in ⚡ Quick Test Mode (1-min checkpoints)...${RESET}"
   echo "    Look at the top of your screen (under the notch)!"
   pkill -f "notch.py" 2>/dev/null || true

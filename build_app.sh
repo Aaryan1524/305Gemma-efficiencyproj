@@ -27,9 +27,9 @@ cat << 'PLIST' > "$APP/Contents/Info.plist"
   <key>CFBundleIdentifier</key>
   <string>com.focusledger.app</string>
   <key>CFBundleVersion</key>
-  <string>1.0.0</string>
+  <string>0.1.0</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.0</string>
+  <string>0.1.0</string>
   <key>CFBundleExecutable</key>
   <string>FocusLedger</string>
   <key>CFBundlePackageType</key>
@@ -39,7 +39,7 @@ cat << 'PLIST' > "$APP/Contents/Info.plist"
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSScreenCaptureUsageDescription</key>
-  <string>FocusLedger reads the focused window with on-device Apple Vision OCR and deletes every screenshot immediately.</string>
+  <string>FocusLedger reads the focused window with on-device Apple Vision OCR with screenshot pixels kept in memory.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>FocusLedger listens briefly when you click Speak goals to transcribe your daily goals on-device.</string>
   <key>NSSpeechRecognitionUsageDescription</key>

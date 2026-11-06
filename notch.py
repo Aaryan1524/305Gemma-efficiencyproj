@@ -38,6 +38,7 @@ import objc
 import Quartz
 from PyObjCTools import AppHelper
 
+import paths
 import focusledger as fl
 import gemma
 
@@ -45,7 +46,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 PYTHON = sys.executable
 DICTATE_APP = os.path.join(BASE, "Dictate.app")   # Swift speech-to-text helper
 DICTATE_EXE = "Dictate.app/Contents/MacOS/dictate"
-ONBOARDING_FLAG = os.path.join(BASE, ".onboarding_done")
+ONBOARDING_FLAG = str(paths.DATA_DIR / ".onboarding_done")
 MODEL_NOTES = {"gemma3:1b": "Fastest, but less accurate"}
 IDLE_STATUS = {"session": "Tracking today", "line": "Waiting for you to get started"}
 SAMPLE_GOALS = "Ship the onboarding; study calculus integrals; keep Slack under 20 minutes"
@@ -162,19 +163,8 @@ def check_system_readiness():
     ai = gemma.check_ollama(timeout=1.2)
     ai_ok = ai["server_ok"] and ai["model_ok"]
 
-    # Trust macOS's own answer when it gives one. The pixel check is a fallback for
-    # older systems, and samples the whole frame: the top rows alone are the flat
-    # menu bar, which reads as "blank" even when permission is granted.
-    screen_ok = False
-    try:
-        if hasattr(Quartz, "CGPreflightScreenCaptureAccess"):
-            screen_ok = bool(Quartz.CGPreflightScreenCaptureAccess())
-        else:
-            with mss.MSS() as sct:
-                px = sct.grab(sct.monitors[1]).rgb
-            screen_ok = len(set(px[i:i + 3] for i in range(0, len(px), 3 * 997))) >= 5
-    except Exception:
-        screen_ok = False
+    # Check permission without capturing the desktop.
+    screen_ok = bool(Quartz.CGPreflightScreenCaptureAccess())
 
     voice_ok = os.path.exists(os.path.join(DICTATE_APP, "Contents", "MacOS", "dictate"))
 
@@ -261,6 +251,7 @@ class App(AppKit.NSObject):
         self.day_done = False
         self.quick_mode = bool(os.environ.get("FL_DEV"))
         self.flush_event = threading.Event()
+        self.flush_ok = False
         self.goals = fl.load_todays_goals()
         self.preview = os.environ.get("FL_PREVIEW")   # setup | goals | tracking | done (design review)
         self.pull_pct = None
@@ -1018,8 +1009,14 @@ class App(AppKit.NSObject):
                 self.session_start = datetime.now()
             elif line.startswith("■"):
                 self.session_start = None
-            elif line.startswith("✓ checkpoint flushed"):
+            elif line in ("FL_FLUSH_OK", "FL_FLUSH_FAILED"):
+                self.flush_ok = line == "FL_FLUSH_OK"
                 self.flush_event.set()
+                continue
+            elif line == "FL_DAY_ENDED":
+                self.day_done = True
+                self.status["line"] = "New day: enter fresh goals to resume"
+                AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
                 continue
             sess, human = self._humanize(line)
             if sess:
@@ -1027,9 +1024,14 @@ class App(AppKit.NSObject):
             if human:
                 self.status["line"] = human
 
+        if proc.wait() != 0:
+            self.flush_ok = False
+            self.flush_event.set()
+            self._report_status("Tracker stopped before its checkpoint; restart tracking")
+
     def viewReport_(self, sender):
         """Flush any active buffer via SIGUSR1, then render and open today's report."""
-        ledger = os.path.join(BASE, "ledger.jsonl")
+        ledger = paths.LEDGER_PATH
         if not os.path.exists(ledger) and self.tracker is None:
             self.status["line"] = "Nothing to report yet. Start your day first"
             self.rebuild()
@@ -1038,60 +1040,49 @@ class App(AppKit.NSObject):
         self.rebuild()
         threading.Thread(target=self._renderReport, daemon=True).start()
 
+    @objc.python_method
+    def _report_status(self, message):
+        self.status["line"] = message
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
+
+    @objc.python_method
     def _renderReport(self):
         if self.tracker is not None and self.tracker.poll() is None:
+            self.flush_ok = False
             self.flush_event.clear()
             try:
                 self.tracker.send_signal(signal.SIGUSR1)
-                self.flush_event.wait(timeout=90.0)
-            except Exception:
-                pass
-        subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
-                        os.path.join(BASE, "ledger.jsonl"), "--open"], cwd=BASE)
-        self.status["line"] = "Report opened in your browser"
-        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
+                if not self.flush_event.wait(timeout=240) or not self.flush_ok:
+                    self._report_status("Checkpoint incomplete. Check Ollama and retry")
+                    return
+            except OSError:
+                self._report_status("Tracker stopped. Report may be incomplete")
+                return
+        result = subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
+                                 paths.LEDGER_PATH, "--open"], cwd=BASE)
+        self._report_status("Report opened in your browser" if result.returncode == 0
+                            else "Report failed. Check Ollama and retry")
 
     def demoReport_(self, sender):
-        """Build a full-day demo report (combining real session if present + seeded sessions)."""
+        """Build a synthetic report without reading or flushing personal activity."""
         self.status["line"] = "Gemma is writing a sample report…"
         if not self.onboarding_mode:
             self.rebuild()
         threading.Thread(target=self._renderDemoReport, daemon=True).start()
 
     def _renderDemoReport(self):
-        real_ledger = os.path.join(BASE, "ledger.jsonl")
-        demo_ledger = os.path.join(BASE, "ledger.demo.jsonl")
-        demo_out = os.path.join(BASE, "report.demo.html")
-
-        if self.tracker is not None and self.tracker.poll() is None:
-            self.flush_event.clear()
-            try:
-                self.tracker.send_signal(signal.SIGUSR1)
-                self.flush_event.wait(timeout=60.0)
-            except Exception:
-                pass
-
-        if os.path.exists(real_ledger):
-            subprocess.run([PYTHON, os.path.join(BASE, "seed.py"),
-                            "--base", real_ledger, "--out", demo_ledger], cwd=BASE)
-        else:
-            subprocess.run([PYTHON, os.path.join(BASE, "seed.py"),
-                            "--out", demo_ledger], cwd=BASE)
-
-        subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
-                        demo_ledger, "--out", demo_out, "--open"], cwd=BASE)
-        self.status["line"] = "Sample report opened in your browser"
-        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
+        demo_out = str(paths.DATA_DIR / "report.demo.html")
+        result = subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
+                                 os.path.join(BASE, "ledger.sample.jsonl"),
+                                 "--out", demo_out, "--demo", "--offline", "--open"], cwd=BASE)
+        self._report_status("Sample report opened in your browser" if result.returncode == 0
+                            else "Sample report could not be rendered")
 
     def resetDay_(self, sender):
         """Stop tracking, archive today's ledger, and return to the morning goal prompt."""
-        proc, self.tracker = self.tracker, None
-        if proc is not None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except Exception:
-                proc.kill()
+        if self.tracker is not None and self.tracker.poll() is None:
+            self._report_status("End your day before starting a new one")
+            return
         fl.reset_todays_ledger()
         self.goals = None
         self.day_done = False
@@ -1114,12 +1105,17 @@ class App(AppKit.NSObject):
                 proc.wait(timeout=180)
             except Exception:
                 proc.kill()
+                self._report_status("Tracking stopped before final checkpoint; report incomplete")
+                return
+            if proc.returncode != 0:
+                self._report_status("Final checkpoint failed; report incomplete")
+                return
         self.day_done = True
         self.session_start = None
         self.dot.setBackgroundColor_(FAINT.CGColor())
-        subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
-                        os.path.join(BASE, "ledger.jsonl"), "--open"], cwd=BASE)
-        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self.rebuild)
+        result = subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
+                                 paths.LEDGER_PATH, "--open"], cwd=BASE)
+        self._report_status("Report opened in your browser" if result.returncode == 0 else "Report failed")
 
     def tick_(self, timer):
         from datetime import datetime
@@ -1165,6 +1161,7 @@ def main():
     if "--install-login" in sys.argv:
         install_login()
         return
+    paths.initialize()
     app = AppKit.NSApplication.sharedApplication()
     app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)  # no Dock icon
     delegate = App.alloc().init()
