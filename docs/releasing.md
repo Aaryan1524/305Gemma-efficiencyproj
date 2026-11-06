@@ -7,6 +7,11 @@ model weights are downloaded separately and are not distributed in this reposito
 
 ## Manual macOS acceptance checklist
 
+Core capture/OCR/model integration can be reproduced with scripts/native_smoke.py
+using disposable data paths (see setup.md). For early source alphas, record any
+unexercised optional voice/login flows as limitations in the release notes.
+Full stable releases require all applicable checks below.
+
 Record commit, hardware, macOS, Python, Ollama, and model versions with results.
 Use a clean checkout and temporary FL_DATA_DIR; never attach personal activity.
 

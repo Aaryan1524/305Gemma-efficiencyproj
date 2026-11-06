@@ -16,11 +16,12 @@ UI support on that OS.
 | Both app bundle builds in isolated temporary directory | Passed; Swift audio tap API deprecation warning on macOS 27 |
 | Apple Vision OCR of generated text image | Passed outside sandbox; sandbox execution returned no text |
 | git diff --check | Passed |
-| Browser visual preview | Native Chrome preview available; final corrected demo review in progress |
+| Browser visual preview | Opened synthetic report in native Chrome, inspected layout and session totals; fixed offline empty-state headline and unsupported goal completion percentage |
 | Native single-window capture, OCR, neighbor exclusion | Passed with generated overlapping windows; missing windows fail closed |
 | Local Gemma checkpoint and daily synthesis | Passed with installed gemma3:4b (Ollama 0.32.3), synthetic data only |
+| Clean checkout launcher/onboarding | Started from exported checkout with temporary data; dependencies, both app builds, and UI process startup succeeded |
 | Voice, permission granting/denial, login and uninstall | Not exercised interactively; optional features / follow-up compatibility checks |
-| GitHub Actions | Pending remote run |
+| GitHub Actions | Passed all steps: [run 42299210572](https://github.com/Aaryan1524/FocusLedger/actions/runs/42299210572) |
 | Private vulnerability reporting | Enabled and verified |
 
 Tests cover PID-based window selection, blocked/missing windows, single-window

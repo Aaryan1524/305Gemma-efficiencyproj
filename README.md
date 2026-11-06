@@ -88,6 +88,7 @@ and the [roadmap](docs/roadmap.md). Tests mock model and capture calls; no scree
 permission or model download is needed. Native tests require macOS.
 
 - [Support](SUPPORT.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Release checklist](docs/releasing.md) · [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
 
 Repository workflow takes inspiration from
