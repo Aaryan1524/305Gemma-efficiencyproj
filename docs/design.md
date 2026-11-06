@@ -11,8 +11,8 @@ or dark preference, adapts to narrow screens, supports keyboard-operated session
 and has print styles. Avoid saturated dashboard rings, decorative cards, and
 unnecessary motion.
 
-The native notch retains its black outer silhouette so it joins the hardware
-notch. Expanded views use warm text, serif headings, fine borders, and compact
+The native notch retains its original black outer silhouette and shadow so it
+joins the hardware notch. The outer shape has no colored stroke or outline. Expanded views use warm text, serif headings, fine borders, and compact
 rectangular controls. Preview mode stays expanded for visual inspection; it does
 not start tracking. Set FL_PREVIEW to setup, goals, tracking, or done with temporary
 FL_DATA_DIR and FL_LEDGER_PATH values.
@@ -27,5 +27,5 @@ checkout and see THIRD_PARTY_NOTICES.md for attribution.
 The design change passes the existing regression suite plus font registration and
 self-contained export checks (22 tests total). Chrome inspection covers the dark
 report's heading, intention, category breakdown, and sessions. Native inspection
-covers the expanded setup panel with bundled typefaces. Tracking behavior and
+covers the expanded setup and goals panels with bundled typefaces. Tracking behavior and
 personal data are outside this visual change; previews use temporary data paths.
