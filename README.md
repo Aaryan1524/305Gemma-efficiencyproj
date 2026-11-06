@@ -30,7 +30,8 @@ cd FocusLedger
 
 The launcher installs dependencies, builds local app launchers, and opens setup.
 Select a model, download it explicitly, and allow Screen Recording for Python in
-System Settings. Quit and reopen after granting permission. Enter goals, optionally
+System Settings. Quit and reopen after granting permission. Enter up to six goals
+separated by semicolons, optionally
 choose **Plan time…** to set minute budgets, then click **Start day**. Work, then choose **End day**. **View report** requests a checkpoint
 while tracking continues. First inference can take several minutes.
 

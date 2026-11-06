@@ -25,7 +25,7 @@ checkout and see THIRD_PARTY_NOTICES.md for attribution.
 ## Verification
 
 The original typography change passed font registration and export checks (22 tests
-at that stage). The performance report now passes 43 tests, including native budget
+at that stage). The performance report now passes 45 tests, including native budget
 controls, explicit completion recording, timeline gaps, baselines, and live publishing. Chrome inspection covers the dark
 report's heading, intention, category breakdown, and sessions. Native inspection
 covers the expanded setup and goals panels with bundled typefaces. Tracking behavior and

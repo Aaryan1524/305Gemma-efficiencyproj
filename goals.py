@@ -3,8 +3,10 @@ import re
 
 
 def split_goals(text):
+    if not isinstance(text, str):
+        return []
     parts = [part.strip(' .,-') for part in re.split(r'[;\n,]|\band then\b|\band\b', text) if part.strip(' .,-')]
-    return [part for part in dict.fromkeys(parts) if len(part) > 3][:6] or ([text.strip()] if text.strip() else [])
+    return list(dict.fromkeys(parts))[:6] or ([text.strip()] if text.strip() else [])
 
 
 def parse_target(value):

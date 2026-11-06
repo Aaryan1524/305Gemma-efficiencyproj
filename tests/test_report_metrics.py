@@ -93,6 +93,8 @@ class ReportMetricsTests(unittest.TestCase):
         rows += [{'type': 'checkpoint', 'minutes': n, 'verdict': {'goal': 'Write report', 'aligned': True}} for n in [-1, float('nan'), float('inf'), 'bad', None, True]]
         rows.append({'type': 'checkpoint', 'minutes': 30, 'verdict': []})
         self.assertEqual(metrics.totals(rows)['total'], 0)
+        rows.append({'type':'checkpoint', 'minutes':30, 'verdict':{'goal':'Write report', 'aligned':True, 'category':[]}})
+        self.assertEqual(metrics.totals(rows)['items'][0]['verdict']['category'], 'other')
 
     def test_targets_overrun_and_completion_remain_independent(self):
         self.rows[ next(i for i in range(len(self.rows)-1,-1,-1) if self.rows[i]['type']=='goals') ]['goal_plans'][0]['target_minutes'] = 60
@@ -122,6 +124,17 @@ class ReportMetricsTests(unittest.TestCase):
         report.write_report(self.ledger, self.out, offline=True, demo=True)
         self.assertFalse('window.location.reload()' in self.out.read_text())
         self.assertTrue('synthetic activity only' in self.out.read_text())
+
+    def test_manual_live_view_can_include_reflection_without_extra_passive_calls(self):
+        with patch.object(report.gemma, 'daily_report', return_value={'headline':'Recorded reflection'}) as model:
+            data = report.build_report(self.ledger, live=True)
+            model.assert_called_once()
+        self.assertEqual(data['synthesis']['headline'], 'Recorded reflection')
+        self.assertTrue(data['live'])
+
+    def test_short_goal_names_survive_parsing(self):
+        self.assertEqual(goals.split_goals('Gym; Study calculus; API'), ['Gym', 'Study calculus', 'API'])
+        self.assertEqual(goals.split_goals(None), [])
 
     def test_atomic_publication_failure_preserves_previous_report(self):
         self.out.write_text('previous report')

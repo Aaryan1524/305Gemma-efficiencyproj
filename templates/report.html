@@ -184,7 +184,7 @@
 <main class="wrap">
   <header class="masthead">
     <div class="brand"><span class="brandmark" aria-hidden="true">fl.</span> FocusLedger</div>
-    <div class="edition"><span class="status-dot" aria-hidden="true"></span> A daily reflection</div>
+    <div class="edition"><span class="status-dot" aria-hidden="true"></span> {{ 'Live report' if live else 'A daily reflection' }}</div>
   </header>
   <div class="journal-header">
     <div class="date">{{ report_date }}</div>
@@ -229,7 +229,7 @@
     <div class="goal-row">
       <div class="goal-heading"><span class="goal-name">{{ goal.goal }}</span><span class="num">{{ goal.actual_label }}{% if goal.target_label %}<span class="goal-target"> / {{ goal.target_label }} planned</span>{% endif %}</span></div>
       <div class="goal-track" aria-hidden="true"><span style="width: {{ goal.bar_pct }}%"></span></div>
-      <div class="goal-caption"><span>{{ 'Marked done by you' if goal.completed else 'Not marked done' }}</span><span>{% if goal.over_minutes %}{{ goal.over_minutes | duration }} over plan{% elif goal.target_minutes %}Time against your target{% else %}Share of time matched to goals{% endif %}</span></div>
+      <div class="goal-caption"><span>{{ 'Marked done by you' if goal.completed else 'Not marked done' }}</span><span>{% if goal.over_minutes %}{{ goal.over_minutes | duration }} over plan{% elif not goal.target_minutes %}Share of time matched to goals{% endif %}</span></div>
     </div>
     {% endfor %}
     <p class="timeline-note">Time spent does not prove completion. Mark goals done from the notch’s “Review goals…” menu.</p>

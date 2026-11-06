@@ -47,7 +47,7 @@ deep-work time, drift, a personal baseline, an interval timeline, and per-goal t
 allocation. Optional morning budgets and explicit user check-offs are stored in the
 ledger. The original borderless black notch outline is preserved.
 
-- `make check` with the isolated Python 3.12 environment: 43 tests passed, plus lint,
+- `make check` with the isolated Python 3.12 environment: 45 tests passed, plus lint,
   shell syntax and documentation-link checks.
 - Native AppKit accessory controls: target entry, invalid-target cancellation,
   starting a day with targets, and recording completion passed programmatic tests.

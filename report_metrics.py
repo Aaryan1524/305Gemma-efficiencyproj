@@ -54,7 +54,10 @@ def checkpoints(rows):
             continue
         verdict = row['verdict']
         goal = next((g for g in goals if g.casefold() == str(verdict.get('goal', '')).casefold()), None)
-        result.append({**row, 'minutes': minutes, 'verdict': {**verdict, 'goal': goal or 'none',
+        category = verdict.get('category')
+        if category not in ('deep_work', 'learning', 'communication', 'admin', 'drift'):
+            category = 'other'
+        result.append({**row, 'minutes': minutes, 'verdict': {**verdict, 'category': category, 'goal': goal or 'none',
                        'aligned': verdict.get('aligned') is True and goal is not None}})
     return result
 

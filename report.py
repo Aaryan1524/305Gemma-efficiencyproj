@@ -159,6 +159,8 @@ def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False, live=Fal
         except Exception:
             synthesis = {'headline': 'Gemma synthesis unavailable; showing recorded activity only'}
     checkpoint_label = data['last_checkpoint']
+    if not isinstance(checkpoint_label, str):
+        checkpoint_label = None
     if checkpoint_label and 'T' in checkpoint_label:
         checkpoint_label = checkpoint_label.split('T', 1)[1][:5]
     elif checkpoint_label:
