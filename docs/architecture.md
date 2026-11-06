@@ -18,9 +18,9 @@ FL_FLUSH_FAILED on its stdout control stream. Reports wait for acknowledgement
 and stop on failure/timeout. End day sends SIGINT and checks the exit result.
 Model synthesis failure still permits a report of recorded facts, visibly labeled.
 
-The window capture uses CoreGraphics CGWindowListCreateImage with an explicit
-window ID. This API is deprecated; ScreenCaptureKit migration is on the roadmap.
-Never replace it with display capture as a compatibility fallback.
+Window capture uses ScreenCaptureKit SCScreenshotManager with a desktop-independent
+single-window filter. The helper services the main run loop while awaiting callbacks.
+Missing windows, denied access, or timeouts skip capture; never use a display fallback.
 
 The optional Swift Dictate.app owns microphone permission and requires on-device
 recognition. FocusLedger.app is an ad-hoc signed launcher tied to the checkout.

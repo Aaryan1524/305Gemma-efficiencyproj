@@ -15,14 +15,15 @@ metrics are experimental estimates, not validated performance measurements.
 
 ## Quick start
 
-Initial support target: **Apple Silicon, macOS 26, Python 3.12**.
+Initial support target: **Apple Silicon, macOS 26 or later, Python 3.12**.
+Native capture/OCR and local-model integration verified on macOS 27.2.
 Other hardware and OS versions are unverified. Install Python 3.12 and
 [Ollama](https://ollama.com/download) first. Voice input additionally needs Xcode
 Command Line Tools (`xcode-select --install`); typed goals work without voice.
 
 ```bash
-git clone https://github.com/Aaryan1524/305Gemma-efficiencyproj.git
-cd 305Gemma-efficiencyproj
+git clone https://github.com/Aaryan1524/FocusLedger.git
+cd FocusLedger
 ./start.sh
 ```
 

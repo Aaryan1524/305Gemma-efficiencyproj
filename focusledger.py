@@ -20,6 +20,7 @@ import Quartz
 import gemma
 import paths
 import vision_ocr
+from window_capture import capture_window
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DEV_MODE = bool(os.environ.get("FL_DEV"))
@@ -48,7 +49,7 @@ def idle_seconds():
 
 
 def frontmost():
-    """Return (app_name, window_title) of the focused window.
+    """Return (app_name, window_title, window_id) of the focused window.
 
     Capturing focus explicitly is what stops Gemma from calling background
     audio (a music tab you aren't looking at) the "activity" — we only ever
@@ -113,10 +114,7 @@ def capture_tick(force=False):
     app, title, window_id = frontmost()
     if window_id is None or is_blocked(app, title):
         return
-    # IncludingWindow captures only this window, never a display fallback.
-    img = Quartz.CGWindowListCreateImage(
-        Quartz.CGRectNull, Quartz.kCGWindowListOptionIncludingWindow,
-        window_id, Quartz.kCGWindowImageBoundsIgnoreFraming)
+    img = capture_window(window_id)
     if img is None:
         return
     pixels = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(img))

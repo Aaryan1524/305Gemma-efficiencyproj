@@ -14,7 +14,7 @@
 
 ## Later milestones
 
-- Replace deprecated CoreGraphics capture with ScreenCaptureKit.
+- Add capture diagnostics and wider window compatibility fixtures.
 - Recover failed final checkpoints across process restarts without storing raw OCR.
 - Standalone signed and notarized Mac distribution with stable permission identity.
 - Optional scheduled daily local reports and configurable exclusions/retention.

@@ -10,15 +10,18 @@ UI support on that OS.
 | --- | --- |
 | Install pinned requirements-dev.txt in fresh Python 3.12 | Passed |
 | pip check | Passed |
-| make check with temporary Python | Passed: 18 tests, Ruff, shell syntax, local documentation links |
+| make check with temporary Python | Passed: 20 tests, Ruff, shell syntax, local documentation links |
 | make demo | Passed: synthetic report, 3 sessions, 240 minutes; no model calls |
 | Native AppKit/Quartz/Vision/tracker/UI imports | Passed |
 | Both app bundle builds in isolated temporary directory | Passed; Swift audio tap API deprecation warning on macOS 27 |
 | Apple Vision OCR of generated text image | Passed outside sandbox; sandbox execution returned no text |
 | git diff --check | Passed |
-| Browser visual preview | Unavailable: browser access host unavailable |
-| Live permissions, window capture, voice, Ollama inference, login and uninstall | Not run; manual release gates |
-| GitHub Actions execution and repository settings | Not run/changed |
+| Browser visual preview | Native Chrome preview available; final corrected demo review in progress |
+| Native single-window capture, OCR, neighbor exclusion | Passed with generated overlapping windows; missing windows fail closed |
+| Local Gemma checkpoint and daily synthesis | Passed with installed gemma3:4b (Ollama 0.32.3), synthetic data only |
+| Voice, permission granting/denial, login and uninstall | Not exercised interactively; optional features / follow-up compatibility checks |
+| GitHub Actions | Pending remote run |
+| Private vulnerability reporting | Enabled and verified |
 
 Tests cover PID-based window selection, blocked/missing windows, single-window
 capture arguments, buffer retries and idle accounting, midnight closure, path
@@ -27,5 +30,10 @@ HTML escaping, report acknowledgement failures, and model errors. They use mocke
 capture and model calls; they do not establish classification quality or native
 permission behavior.
 
-The roadmap and release checklist retain the remaining gates. No public release,
-remote push, signed/notarized distribution, or data upload was performed.
+CoreGraphics returned no image during native verification. The implementation now
+uses ScreenCaptureKit with a desktop-independent window filter and services the
+main run loop for callbacks. The native smoke uses only its own generated windows
+and temporary ledger; no personal activity is read or uploaded.
+
+This is an early source alpha, not a signed/notarized standalone distribution.
+See releasing.md for reproduction and remaining compatibility coverage.

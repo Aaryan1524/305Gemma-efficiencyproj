@@ -25,21 +25,36 @@ class AlphaTests(unittest.TestCase):
 
     def test_capture_skips_unidentified_and_blocked(self):
         for window in [("Unknown", "", None), ("1Password", "secret", 3), ("Safari", "login", 4)]:
-            with patch.object(fl, 'frontmost', return_value=window), patch.object(fl.Quartz, 'CGWindowListCreateImage') as capture:
+            with patch.object(fl, 'frontmost', return_value=window), patch.object(fl, 'capture_window') as capture:
                 fl.capture_tick()
                 capture.assert_not_called()
         self.assertFalse(fl.BUFFER)
 
     def test_capture_only_selected_window_and_memory_ocr(self):
         with patch.object(fl, 'frontmost', return_value=('Editor', 'sample', 42)), \
-                patch.object(fl.Quartz, 'CGWindowListCreateImage', return_value=object()) as capture, \
+                patch.object(fl, 'capture_window', return_value=object()) as capture, \
                 patch.object(fl.Quartz, 'CGImageGetDataProvider'), \
                 patch.object(fl.Quartz, 'CGDataProviderCopyData', return_value=b'pixels'), \
                 patch.object(fl.vision_ocr, 'ocr_image', return_value='synthetic text'):
             fl.capture_tick()
-            self.assertEqual(capture.call_args.args[1], fl.Quartz.kCGWindowListOptionIncludingWindow)
-            self.assertEqual(capture.call_args.args[2], 42)
+            capture.assert_called_once_with(42)
             self.assertEqual(len(fl.BUFFER), 1)
+
+    def test_window_capture_fails_closed_before_requesting_content(self):
+        import window_capture
+        with patch.object(window_capture.Quartz, 'CGPreflightScreenCaptureAccess', return_value=False), patch.object(window_capture, 'SC') as api:
+            self.assertIsNone(window_capture.capture_window(42))
+            api.SCShareableContent.getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler_.assert_not_called()
+        self.assertIsNone(window_capture.capture_window(None))
+
+    def test_offline_sample_does_not_claim_no_activity_or_goal_completion(self):
+        data = report.build_report(paths.BASE / 'ledger.sample.jsonl', demo=True, offline=True)
+        out = self.root / 'demo.html'
+        report.render(data, out)
+        html = out.read_text()
+        self.assertNotIn('No activity recorded today.', html)
+        self.assertNotIn('Goals met', html)
+        self.assertIn('Time in drift', html)
 
     def test_window_selection_matches_pid_not_name(self):
         app = Mock()

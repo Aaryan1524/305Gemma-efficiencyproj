@@ -181,7 +181,9 @@ def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False):
 
     # Gemma call site #2 — synthesize the whole day. Degrade gracefully if it fails.
     try:
-        synthesis = gemma.daily_report(goals, verdicts) if verdicts and not offline else {}
+        synthesis = gemma.daily_report(goals, verdicts) if verdicts and not offline else {
+            "headline": "A sample day, by the numbers" if demo and verdicts else ("Recorded activity, by the numbers" if verdicts else "No activity recorded today.")
+        }
     except Exception as e:
         synthesis = {
             "headline": "Gemma synthesis unavailable; showing recorded activity only",
@@ -189,14 +191,6 @@ def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False):
             "tactical_rule": "Maintain focused blocks without multi-tasking.",
             "goal_progress": [], "drift": [], "tomorrow": []
         }
-
-    # Goal Completion Rate %
-    goal_prog = synthesis.get("goal_progress", [])
-    if goal_prog:
-        comp_count = sum(1 for g in goal_prog if any(w in g.get("verdict", "").lower() for w in ["done", "complete", "achieved", "met", "finished", "good", "yes"]))
-        goal_completion = round(100 * comp_count / len(goal_prog)) if comp_count else min(100, round(focus_score * 1.1))
-    else:
-        goal_completion = focus_score
 
     max_cat_min = max((c["minutes"] for c in categories), default=0)
 
@@ -221,7 +215,7 @@ def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False):
         "deep_min": _disp_min(cat_min.get("deep_work", 0)),
         "focus_score": focus_score,
         "cognitive_strain": cognitive_strain,
-        "goal_completion": goal_completion,
+        "drift_pct": round(100 * cat_min.get("drift", 0) / total_min) if total_min else 0,
         "switches_per_hr": switches_per_hr,
         "max_streak_min": max_streak_min,
         "peak_window": peak_window,

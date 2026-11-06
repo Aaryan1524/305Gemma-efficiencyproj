@@ -1,6 +1,6 @@
 # Setup and troubleshooting
 
-Use Apple Silicon macOS 26 and Python 3.12. Install Ollama separately. Run
+Use Apple Silicon macOS 26 or later and Python 3.12. Install Ollama separately. Run
 `./start.sh`; allow Python under Privacy & Security → Screen & System Audio
 Recording, then quit and reopen. Download a model in setup. Voice is optional;
 install Xcode Command Line Tools and run `./build_dictate.sh` to enable it.
@@ -39,3 +39,16 @@ if installed, remove the checkout, and remove FocusLedger's Application Support
 folder if you want to erase history. Legacy ledger copies in the checkout remain
 until you delete them. Remove the Python Screen Recording permission if no other
 application needs it. Remove Ollama/models separately if desired.
+
+## Native integration check
+
+Run only against disposable paths with existing Screen Recording permission:
+
+```bash
+FL_DATA_DIR=/tmp/focusledger-smoke FL_LEDGER_PATH=/tmp/focusledger-smoke/ledger.jsonl ./venv/bin/python scripts/native_smoke.py --model gemma3:4b
+```
+
+It creates two synthetic windows, checks single-window capture and neighbor exclusion,
+then optionally runs an installed local model and renders a report. Omitting `--model`
+checks native capture/OCR only. It never starts general activity tracking or changes
+permissions. The model must already be installed.

@@ -165,8 +165,8 @@
     </div>
     {% endmacro %}
     {{ ring(focus_score, 100, "var(--green)", "Focus score", "%") }}
-    {{ ring(cognitive_strain, 21, "var(--orange)", "Strain", "") }}
-    {{ ring(goal_completion, 100, "var(--blue)", "Goals met", "%") }}
+    {{ ring(cognitive_strain, 21, "var(--orange)", "Workload estimate", "") }}
+    {{ ring(drift_pct, 100, "var(--blue)", "Time in drift", "%") }}
   </div>
 
   <div class="group metrics">
@@ -174,7 +174,7 @@
     <div class="m"><div class="v num">{{ aligned_min // 60 }}h {{ aligned_min % 60 }}m</div><div class="l">On goal</div></div>
     <div class="m"><div class="v num">{{ deep_min // 60 }}h {{ deep_min % 60 }}m</div><div class="l">Deep work</div></div>
     <div class="m"><div class="v num">{{ drift_min }}m</div><div class="l">Drift</div></div>
-    <div class="m"><div class="v num">{{ switches_per_hr }}</div><div class="l">Switches / hr</div></div>
+    <div class="m"><div class="v num">{{ switches_per_hr }}</div><div class="l">Activities / hr</div></div>
   </div>
 
   {% if synthesis.tactical_rule %}

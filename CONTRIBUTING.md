@@ -1,7 +1,7 @@
 # Contributing to FocusLedger
 
 Bug reports, documentation, accessibility improvements, and code contributions are welcome.
-The initial support target is Apple Silicon macOS 26 with Python 3.12.
+The initial support target is Apple Silicon macOS 26 or later with Python 3.12.
 
 1. Fork and clone the repository; create a focused branch.
 2. Install Python 3.12 and run `make dev`. Ollama and screen permissions are not needed for unit tests.
