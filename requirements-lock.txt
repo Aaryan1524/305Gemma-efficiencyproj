@@ -13,3 +13,4 @@ requests==2.34.2
 urllib3==2.8.0
 pyobjc-framework-ScreenCaptureKit==12.2.2
 pyobjc-framework-CoreMedia==12.2.2
+pyobjc-framework-CoreText==12.2.2

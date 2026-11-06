@@ -20,6 +20,8 @@ class AlphaTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         fl.BUFFER.clear()
+        self.refresh = patch.object(fl, "refresh_report").start()
+        self.addCleanup(patch.stopall)
         fl._last_hash = None
         self.addCleanup(fl.BUFFER.clear)
 
@@ -54,7 +56,25 @@ class AlphaTests(unittest.TestCase):
         html = out.read_text()
         self.assertNotIn('No activity recorded today.', html)
         self.assertNotIn('Goals met', html)
-        self.assertIn('Time in drift', html)
+        self.assertTrue('Drift' in html)
+
+    def test_report_fonts_travel_with_exported_html(self):
+        data = report.build_report(paths.BASE / 'ledger.sample.jsonl', demo=True, offline=True)
+        out = self.root / 'standalone.html'
+        report.render(data, out)
+        html = out.read_text()
+        self.assertEqual(html.count('data:font/ttf;base64,'), 3)
+        self.assertIn('SIL OPEN FONT LICENSE', html)
+        self.assertNotIn('fonts.googleapis.com', html)
+        self.assertIn('Instrument Serif', html)
+
+    def test_native_fonts_are_available_to_the_process(self):
+        from typography import register_native_fonts
+        import notch
+        register_native_fonts()
+        self.assertEqual(notch._font(13).familyName(), 'Geist')
+        self.assertEqual(notch._font(13, 'semibold').fontName(), 'Geist-SemiBold')
+        self.assertEqual(notch._serif(28).familyName(), 'Instrument Serif')
 
     def test_window_selection_matches_pid_not_name(self):
         app = Mock()

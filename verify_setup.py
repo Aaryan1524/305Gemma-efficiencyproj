@@ -37,7 +37,7 @@ def check(name, fn):
 # ---------------------------------------------------------------- deps ----
 def c_deps():
     import importlib.util
-    missing = [m for m in ("mss", "Quartz", "Vision", "requests", "jinja2", "AppKit", "objc", "ScreenCaptureKit")
+    missing = [m for m in ("mss", "Quartz", "Vision", "requests", "jinja2", "AppKit", "objc", "ScreenCaptureKit", "CoreText")
                if importlib.util.find_spec(m) is None]
     return (not missing), ("all present" if not missing else f"missing: {missing}")
 

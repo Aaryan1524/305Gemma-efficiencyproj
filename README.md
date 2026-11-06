@@ -7,11 +7,12 @@
 
 Set goals before working. FocusLedger reads your active window with Apple Vision,
 asks Gemma through local Ollama to estimate alignment, and creates an HTML report
-when you choose **View report** or **End day**. Reports are on demand, not scheduled.
+after successful checkpoints. **View report** opens a live view; **End day** adds a
+daily reflection and freezes a snapshot. Reports are local, not delivered by email.
 
 This is a source-based alpha, originally built at a hackathon. It is intended for
-personal reflection. AI judgments can be wrong; scores and derived cognitive
-metrics are experimental estimates, not validated performance measurements.
+personal reflection. AI judgments can be wrong; activity classifications and
+alignment estimates are not validated performance measurements.
 
 ## Quick start
 
@@ -29,12 +30,29 @@ cd FocusLedger
 
 The launcher installs dependencies, builds local app launchers, and opens setup.
 Select a model, download it explicitly, and allow Screen Recording for Python in
-System Settings. Quit and reopen after granting permission. Enter goals, click
-**Start day**, work, then choose **End day**. **View report** requests a checkpoint
+System Settings. Quit and reopen after granting permission. Enter up to six goals
+separated by semicolons, optionally
+choose **Plan time…** to set minute budgets, then click **Start day**. Work, then choose **End day**. **View report** requests a checkpoint
 while tracking continues. First inference can take several minutes.
 
 The `.app` is a repository launcher: keep it with the checkout. It is locally
 ad-hoc signed, not a standalone notarized download.
+
+## Your day at a glance
+
+The report leads with **Alignment**, **Deep work**, and **Drift**. Alignment is the
+share of classified time matched to a stated goal; drift is time without a match.
+Compare alignment with up to seven previous recorded days. Missing days are not zeros.
+
+A timeline shows aligned time, drift, and gaps without classified data. Goal bars
+show actual time against optional morning budgets. Use **… → Review goals…** to
+mark tasks done yourself; spending the planned time never marks them complete.
+
+While tracking, successful checkpoints atomically regenerate the report without
+another model summary call. An open live report reloads every 30 seconds, preserving
+scroll position and expanded sections where browser storage is available. It does
+not take a new capture on every reload. **End day**, demos, and historical reports
+are frozen snapshots. Older ledger intervals are marked as approximate.
 
 ## Try without recording your screen
 

@@ -6,186 +6,238 @@
 <meta name="color-scheme" content="light dark">
 <title>FocusLedger · Daily Report</title>
 <style>
+{{ font_css | safe }}
   :root {
-    --bg: #f5f5f7;
-    --card: #ffffff;
-    --ink: #1d1d1f;
-    --muted: #6e6e73;
-    --faint: #aeaeb2;
-    --line: rgba(0,0,0,0.08);
-    --track: rgba(120,120,128,0.16);
-    --tint: rgba(0,122,255,0.08);
-    --blue: #007aff; --purple: #af52de; --green: #34c759; --gray: #8e8e93; --orange: #ff9500;
-    --red: #ff3b30;
-    --radius: 20px;
+    color-scheme: light dark;
+    --bg: #f4f0e8; --card: #eee9df; --ink: #262720; --muted: #66675f;
+    --faint: #77786e; --line: #d7d3c9; --track: #e3dfd4; --tint: #ebe8de;
+    --blue: #526d67; --purple: #8b8272; --green: #526d57; --gray: #969487;
+    --orange: #a47954; --red: #a36354;
+    --serif: "Instrument Serif", Georgia, serif;
+    --sans: "Geist", -apple-system, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #000000;
-      --card: #1c1c1e;
-      --ink: #f5f5f7;
-      --muted: #98989d;
-      --faint: #636366;
-      --line: rgba(255,255,255,0.10);
-      --track: rgba(120,120,128,0.32);
-      --tint: rgba(10,132,255,0.14);
-      --blue: #0a84ff; --purple: #bf5af2; --green: #30d158; --gray: #98989d; --orange: #ff9f0a;
-      --red: #ff453a;
+      --bg: #151613; --card: #1c1d19; --ink: #eee9df; --muted: #b0b1a5;
+      --faint: #9a9c8f; --line: #363830; --track: #2a2c25; --tint: #20231c;
+      --blue: #a5b8aa; --purple: #ada391; --green: #b3c2a1; --gray: #797e70;
+      --orange: #c4a17e; --red: #d39988;
     }
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-    font-size: 15px; line-height: 1.47; letter-spacing: -0.01em;
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 64px 22px 96px; }
-  .num { font-variant-numeric: tabular-nums; font-family: -apple-system, "SF Pro Rounded", ui-rounded, sans-serif; }
-
-  /* Header */
-  .eyebrow { color: var(--muted); font-size: 13px; font-weight: 600; }
-  h1 { margin: 2px 0 0; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.03em; }
-  .date { color: var(--muted); font-size: 17px; margin-top: 4px; }
-
-  /* Hero statement */
-  .hero { margin: 44px 0 40px; }
-  .hero .headline { font-size: 28px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
-  .hero .coach { color: var(--muted); font-size: 17px; line-height: 1.45; margin: 12px 0 0; }
-
-  /* Rings */
-  .rings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .ring-card { background: var(--card); border-radius: var(--radius); padding: 22px 12px 18px; text-align: center; }
-  .ringbox { position: relative; width: 112px; height: 112px; margin: 0 auto; }
-  .ringbox svg { transform: rotate(-90deg); display: block; }
-  .ringbox .center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-  .ring-val { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
-  .ring-val small { font-size: 15px; font-weight: 600; color: var(--muted); margin-left: 1px; }
-  .ring-label { margin-top: 14px; font-size: 13px; font-weight: 600; color: var(--muted); }
-
-  /* Section titles */
-  h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 48px 0 12px; }
-
-  /* Grouped list container */
-  .group { background: var(--card); border-radius: var(--radius); overflow: hidden; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--ink); color: var(--bg); }
+  .wrap { max-width: 900px; padding: 36px 42px 38px; margin: auto; }
+  .num { font-variant-numeric: tabular-nums; }
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 25px; border-bottom: 1px solid var(--line); }
+  .brand { font-size: 14px; font-weight: 500; letter-spacing: -.04em; display: flex; align-items: center; gap: 12px; }
+  .brandmark { font: 24px/1 var(--serif); border-right: 1px solid var(--line); padding-right: 14px; }
+  .edition, .kicker, .date, .section-label { font-size: 10px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase; }
+  .edition { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); display: inline-block; }
+  .journal-header { margin: 54px 0 40px; }
+  .date { color: var(--muted); margin-bottom: 18px; }
+  h1 { font: 400 clamp(64px, 10vw, 96px)/.96 var(--serif); letter-spacing: -.035em; margin: 0; }
+  h1 em { font-weight: 400; color: var(--blue); }
+  .intention { display: grid; grid-template-columns: 150px 1fr; gap: 24px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 23px 0; }
+  .kicker { color: var(--muted); }
+  .intention p { margin: 0; font-size: 14px; line-height: 1.8; max-width: 550px; }
+  .hero { margin: 37px 0 33px; }
+  .hero .headline { font: 400 34px/1.16 var(--serif); letter-spacing: -.01em; margin: 0; max-width: 660px; }
+  .hero .coach { font-size: 14px; line-height: 1.85; color: var(--muted); max-width: 660px; margin: 16px 0 0; }
+  .scoreboard { display: grid; grid-template-columns: 1.6fr 1fr 1fr; align-items: end; gap: 34px; padding: 0 0 28px; border-bottom: 1px solid var(--line); }
+  .score-value { font: 400 104px/.95 var(--serif); letter-spacing: -.045em; }
+  .score-value small { font: 400 34px/1 var(--serif); margin-left: 5px; color: var(--muted); }
+  .score-caption { color: var(--muted); font-size: 11px; margin-top: 13px; max-width: 220px; }
+  .stat-value { font: 400 38px/1.1 var(--serif); letter-spacing: -.025em; white-space: nowrap; }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-top: 10px; }
+  .alignment { margin-top: 17px; max-width: 220px; height: 3px; background: var(--track); overflow: hidden; }
+  .alignment span { height: 100%; display: block; background: var(--green); }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+  .m { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .m .v { font-size: 14px; font-weight: 500; }
+  .m .l { color: var(--muted); font-size: 11px; }
+  .rule { margin-top: 30px; padding: 20px 24px; border-left: 2px solid var(--blue); background: var(--tint); }
+  .rule .t { color: var(--muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  .rule .b { margin-top: 6px; font: 400 24px/1.3 var(--serif); }
+  .sections { counter-reset: section; }
+  h2 { counter-increment: section; display: flex; align-items: center; gap: 18px; font: 400 30px/1.25 var(--serif); letter-spacing: -.02em; margin: 48px 0 22px; }
+  h2::before { content: "0" counter(section); color: var(--faint); font: 10px/1 var(--sans); letter-spacing: .06em; }
   .group > * + * { border-top: 1px solid var(--line); }
-
-  /* Metrics */
-  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 12px; }
-  .metrics .m { padding: 18px 8px; text-align: center; border-top: none !important; }
-  .metrics .m + .m { border-left: 1px solid var(--line); }
-  .m .v { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
-  .m .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  /* Rule callout */
-  .rule { margin-top: 12px; background: var(--tint); border-radius: var(--radius); padding: 18px 20px; }
-  .rule .t { font-size: 13px; font-weight: 600; color: var(--blue); }
-  .rule .b { font-size: 17px; font-weight: 500; margin-top: 4px; letter-spacing: -0.015em; }
-
-  /* Time breakdown */
-  .stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; margin: 0 0 14px; }
-  .stack span { display: block; height: 100%; }
-  .catrow { display: flex; align-items: center; gap: 12px; padding: 14px 20px; }
-  .catrow .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-  .catrow .name { flex: 1; font-weight: 500; }
-  .catrow .min { color: var(--muted); }
-
-  /* Goals / drift / tomorrow */
-  .row { display: flex; justify-content: space-between; gap: 16px; padding: 15px 20px; }
-  .row .g { font-weight: 600; }
-  .row .v { color: var(--muted); font-size: 14px; margin-top: 1px; }
-  .row .t { color: var(--muted); white-space: nowrap; }
-  .drift-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); margin-top: 8px; flex: none; }
-  .row.drift { justify-content: flex-start; align-items: flex-start; }
+  .stack { display: flex; height: 5px; gap: 3px; margin: 0 0 13px; overflow: hidden; }
+  .stack span { height: 100%; display: block; }
+  .catrow { display: flex; align-items: center; gap: 12px; padding: 15px 0; }
+  .swatch { width: 5px; height: 5px; border-radius: 50%; flex: none; }
+  .catrow .name { flex: 1; }
+  .catrow .min { color: var(--muted); font-size: 12px; }
+  .row { display: flex; justify-content: space-between; gap: 24px; padding: 18px 0; }
+  .row .g { font-weight: 500; }
+  .row .v { color: var(--muted); font-size: 13px; margin-top: 5px; }
+  .row .t { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .row.drift { justify-content: flex-start; }
+  .drift-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--orange); flex: none; margin-top: 9px; }
   .tomorrow .row { justify-content: flex-start; }
-  .tomorrow .n { color: var(--faint); font-weight: 600; width: 18px; flex: none; }
-
-  /* Sessions */
-  details { }
-  summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 15px 20px; user-select: none; }
+  .tomorrow .n { color: var(--faint); font-size: 11px; flex: none; padding-top: 2px; }
+  summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 18px; padding: 20px 0; user-select: none; }
   summary::-webkit-details-marker { display: none; }
-  summary .chev { color: var(--faint); font-size: 12px; transition: transform .2s ease; width: 10px; }
-  details[open] summary .chev { transform: rotate(90deg); }
-  summary .when { font-weight: 600; flex: 1; }
-  summary .dur { color: var(--muted); }
-  .ticks { padding: 2px 20px 10px 40px; }
-  .tick { display: grid; grid-template-columns: 62px 1fr auto; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); align-items: start; }
-  .tick:first-child { border-top: none; }
-  .tick .clk { color: var(--faint); font-size: 13px; padding-top: 1px; }
-  .tick .act { font-weight: 500; }
-  .tick .note { color: var(--muted); font-size: 13.5px; margin-top: 1px; }
-  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 980px; background: var(--track); color: var(--ink); white-space: nowrap; }
-  .goalflag { font-size: 12px; font-weight: 600; margin-top: 5px; text-align: right; }
+  summary:hover .when { color: var(--blue); }
+  summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+  summary .chev { color: var(--faint); font-size: 17px; font-weight: 300; transition: transform .2s ease; width: 10px; }
+  details[open] summary .chev { transform: rotate(45deg); }
+  summary .when { flex: 1; font-size: 13px; }
+  summary .dur { color: var(--muted); font-size: 12px; }
+  .ticks { padding: 0 0 16px 28px; }
+  .tick { display: grid; grid-template-columns: 62px 1fr auto; gap: 16px; padding: 15px 0; border-top: 1px solid var(--line); align-items: start; }
+  .tick .clk { color: var(--muted); font-size: 11px; padding-top: 2px; }
+  .tick .act { font-size: 13px; font-weight: 500; }
+  .tick .note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .pill { display: inline-block; font-size: 10px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); white-space: nowrap; }
+  .goalflag { font-size: 10px; margin-top: 6px; }
   .goalflag.yes { color: var(--green); }
   .goalflag.no { color: var(--orange); }
-  .empty { color: var(--muted); padding: 16px 20px; }
-
-  footer { margin-top: 56px; color: var(--faint); font-size: 12.5px; text-align: center; line-height: 1.6; }
-
+  .empty { color: var(--muted); padding: 16px 0; }
+  .report-note { margin: 45px 0 0; padding: 15px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.8; }
+  .report-note strong { color: var(--ink); font-weight: 500; }
+  footer { display: flex; justify-content: space-between; gap: 24px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.8; }
+  .footer-brand { font: 22px/1.2 var(--serif); color: var(--ink); }
   @media (max-width: 620px) {
-    h1 { font-size: 34px; }
-    .rings { grid-template-columns: 1fr; }
-    .ring-card { display: flex; align-items: center; gap: 20px; text-align: left; padding: 16px 20px; }
-    .ringbox { margin: 0; width: 84px; height: 84px; flex: none; }
-    .ringbox svg { width: 84px; height: 84px; }
-    .ring-label { margin: 0; font-size: 15px; }
-    .metrics { grid-template-columns: repeat(2, 1fr); }
-    .metrics .m { border-left: none !important; border-top: 1px solid var(--line) !important; }
-    .metrics .m:nth-child(-n+2) { border-top: none !important; }
+    .wrap { padding: 25px 24px; }
+    .journal-header { margin: 40px 0 30px; }
+    .intention { grid-template-columns: 1fr; gap: 8px; }
+    .scoreboard { grid-template-columns: 1fr 1fr; gap: 26px 18px; }
+    .score-main { grid-column: 1 / -1; }
+    .score-value { font-size: 94px; }
+    .stat-value { font-size: 32px; }
+    .score-caption { max-width: none; }
+    .alignment { max-width: none; }
+    .metrics { gap: 12px; }
+    .m { display: block; }
+    .m .l { margin-top: 4px; }
+    .tick { grid-template-columns: 48px 1fr; gap: 10px; }
+    .tick .verdict { grid-column: 2; text-align: left !important; display: flex; align-items: center; gap: 10px; }
+    .tick .goalflag { margin: 0; }
+    .ticks { padding-left: 0; }
+    .hero .headline { font-size: 29px; }
+    summary { gap: 12px; }
+    summary .when { font-size: 11px; }
+    footer { flex-direction: column; gap: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media print {
+    :root { color-scheme: light; --bg: white; --ink: #262720; --muted: #555; --line: #ccc; --track: #eee; --green: #526d57; --blue: #526d67; --orange: #a47954; }
+    .wrap { max-width: none; padding: 0; }
+    h1 { font-size: 64px; }
+    .journal-header { margin-top: 28px; }
+    .row, .scoreboard, .tick { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+  /* Compact performance overview; details stay below the fold. */
+  .journal-header { margin: 28px 0 26px; }
+  .date { margin-bottom: 12px; }
+  h1 { font-size: clamp(42px, 7vw, 64px); line-height: 1.05; }
+  .scoreboard { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 24px; }
+  .score-value { font-size: clamp(38px, 7vw, 66px); margin-top: 10px; white-space: nowrap; }
+  .score-value small { font-size: 28px; }
+  .stat-label { margin: 0; }
+  .score-caption { margin-top: 12px; font-size: 12px; }
+  .report-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 15px 0; color: var(--muted); font-size: 11px; }
+  .section-heading { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin: 32px 0 20px; }
+  .section-heading h2 { margin: 0; }
+  .section-heading h2::before { content: none; }
+  .day-timeline { display: grid; gap: 3px; height: 28px; }
+  .time-bin { background: linear-gradient(to top, var(--green) 0 var(--aligned), var(--orange) var(--aligned) var(--classified), var(--track) var(--classified) 100%); }
+  .time-axis { position: relative; height: 24px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .time-axis span { position: absolute; transform: translateX(-50%); }
+  .time-axis span:first-child { transform: none; }
+  .time-axis span:last-child { transform: translateX(-100%); }
+  .timeline-legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 11px; color: var(--muted); }
+  .timeline-legend span { display: flex; align-items: center; gap: 7px; }
+  .timeline-legend i { width: 7px; height: 7px; background: var(--track); }
+  .timeline-legend .legend-aligned { background: var(--green); }
+  .timeline-legend .legend-drift { background: var(--orange); }
+  .timeline-note { color: var(--muted); font-size: 11px; margin: 14px 0 0; }
+  .goal-row { padding: 15px 0; }
+  .goal-row + .goal-row { border-top: 1px solid var(--line); }
+  .goal-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; font-size: 13px; }
+  .goal-name { flex: 1; min-width: 140px; overflow-wrap: anywhere; }
+  .goal-target { color: var(--muted); font-size: 12px; }
+  .goal-track { height: 4px; background: var(--track); margin: 13px 0 10px; }
+  .goal-track span { display: block; height: 100%; background: var(--green); }
+  .goal-caption { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; color: var(--muted); font-size: 11px; }
+  .sections { margin-top: 30px; border-top: 1px solid var(--line); }
+  .report-detail { border-bottom: 1px solid var(--line); padding-bottom: 0; }
+  .report-detail > summary { font-size: 13px; justify-content: space-between; }
+  .report-detail[open] { padding-bottom: 20px; }
+  .row > div, .tick > div { min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 620px) {
+    .scoreboard { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .score-main { grid-column: auto; }
+    .score-value { font-size: clamp(30px, 8vw, 45px); letter-spacing: -.05em; }
+    .score-value small { font-size: 20px; }
+    .stat-label, .score-caption { font-size: 11px; letter-spacing: 0; }
+    .section-heading h2 { font-size: 27px; }
+    .day-timeline { gap: 2px; }
   }
 </style>
 </head>
 <body>
-<div style="padding:12px;text-align:center">{% if demo %}<strong>DEMO — synthetic activity only.</strong> {% endif %}Alpha: goal alignment is an AI estimate. Derived metrics are experimental, not validated measurements.{% if offline %} Model synthesis skipped.{% endif %}</div>
-<div class="wrap">
-
-  <div class="eyebrow">FocusLedger</div>
-  <h1>Daily Report</h1>
-  <div class="date">{{ report_date }}</div>
-  {% if goals %}<p><strong>Stated goals:</strong> {{ goals }}</p>{% endif %}
-
-  <div class="hero">
-    <p class="headline">{{ synthesis.headline or "No activity recorded today." }}</p>
-    {% if synthesis.coach_verdict %}<p class="coach">{{ synthesis.coach_verdict }}</p>{% endif %}
+<main class="wrap">
+  <header class="masthead">
+    <div class="brand"><span class="brandmark" aria-hidden="true">fl.</span> FocusLedger</div>
+    <div class="edition"><span class="status-dot" aria-hidden="true"></span> {{ 'Live report' if live else 'A daily reflection' }}</div>
+  </header>
+  <div class="journal-header">
+    <div class="date">{{ report_date }}</div>
+    <h1>Your day, <em>in focus.</em></h1>
   </div>
-
-  {% set ring_c = 314.16 %}{# r = 50 #}
-  <div class="rings">
-    {% macro ring(value, maxv, color, label, suffix) %}
-    <div class="ring-card">
-      <div class="ringbox">
-        <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label="{{ label }} {{ value }}{{ suffix }}">
-          <circle cx="56" cy="56" r="50" fill="none" stroke="var(--track)" stroke-width="11"/>
-          <circle cx="56" cy="56" r="50" fill="none" stroke="{{ color }}" stroke-width="11" stroke-linecap="round"
-                  stroke-dasharray="{{ ([value / maxv, 1] | min * ring_c) | round(1) }} {{ ring_c }}"/>
-        </svg>
-        <div class="center"><div class="ring-val num">{{ value }}{% if suffix %}<small>{{ suffix }}</small>{% endif %}</div></div>
-      </div>
-      <div class="ring-label">{{ label }}</div>
+  <section class="scoreboard" aria-label="Day at a glance">
+    <div class="score-main">
+      <div class="stat-label">Alignment</div>
+      <div class="score-value num">{% if focus_score is not none %}{{ focus_score }}<small>%</small>{% else %}—{% endif %}</div>
+      <div class="score-caption">{% if delta is not none %}{{ '+' if delta > 0 else '' }}{{ delta }} pp vs previous {{ baseline_count }} recorded {{ 'day' if baseline_count == 1 else 'days' }}{% else %}{{ 'No previous classified days yet' if total else 'Waiting for the first checkpoint' }}{% endif %}</div>
     </div>
-    {% endmacro %}
-    {{ ring(focus_score, 100, "var(--green)", "Focus score", "%") }}
-    {{ ring(cognitive_strain, 21, "var(--orange)", "Workload estimate", "") }}
-    {{ ring(drift_pct, 100, "var(--blue)", "Time in drift", "%") }}
+    <div>
+      <div class="stat-label">Deep work</div><div class="score-value num">{{ deep_label if total else '—' }}</div>
+      <div class="score-caption">Classified as focused work</div>
+    </div>
+    <div>
+      <div class="stat-label">Drift</div><div class="score-value num">{{ drift_label if total else '—' }}</div>
+      <div class="score-caption">Time not matched to your goals</div>
+    </div>
+  </section>
+  <div class="report-status">
+    <span>Based on {{ total_label }} classified · {% if last_checkpoint_label %}Last checkpoint {{ last_checkpoint_label }}{% else %}No checkpoints yet{% endif %}</span>
+    <span>{% if live %}<span class="status-dot" aria-hidden="true"></span> Auto-refresh · 30 sec{% else %}Snapshot · Generated {{ generated_at }}{% endif %}</span>
   </div>
-
-  <div class="group metrics">
-    <div class="m"><div class="v num">{{ total_min // 60 }}h {{ total_min % 60 }}m</div><div class="l">Tracked</div></div>
-    <div class="m"><div class="v num">{{ aligned_min // 60 }}h {{ aligned_min % 60 }}m</div><div class="l">On goal</div></div>
-    <div class="m"><div class="v num">{{ deep_min // 60 }}h {{ deep_min % 60 }}m</div><div class="l">Deep work</div></div>
-    <div class="m"><div class="v num">{{ drift_min }}m</div><div class="l">Drift</div></div>
-    <div class="m"><div class="v num">{{ switches_per_hr }}</div><div class="l">Activities / hr</div></div>
-  </div>
-
-  {% if synthesis.tactical_rule %}
-  <div class="rule">
-    <div class="t">Rule for tomorrow</div>
-    <div class="b">{{ synthesis.tactical_rule }}</div>
-  </div>
+  {% if "unavailable" in synthesis.headline %}<p class="timeline-note">{{ synthesis.headline }}</p>{% endif %}
+  <section class="day-shape" aria-label="Day timeline">
+    <div class="section-heading"><h2>The shape of your day</h2><span class="kicker">30-minute bins · AI estimates</span></div>
+    {% if timeline.bins %}
+    <div class="day-timeline" style="grid-template-columns: repeat({{ timeline.bins | length }}, minmax(0, 1fr))">
+      {% for bin in timeline.bins %}<span class="time-bin" role="img" aria-label="{{ bin.description }}" title="{{ bin.description }}" style="--aligned: {{ bin.aligned_pct }}%; --classified: {{ bin.classified_pct }}%"></span>{% endfor %}
+    </div>
+    <div class="time-axis" aria-hidden="true">{% for tick in timeline.ticks %}<span style="left: {{ tick.position }}%">{{ tick.label }}</span>{% endfor %}</div>
+    <div class="timeline-legend"><span><i class="legend-aligned" aria-hidden="true"></i>Aligned</span><span><i class="legend-drift" aria-hidden="true"></i>Drift</span><span><i class="legend-gap" aria-hidden="true"></i>No classified data</span></div>
+    {% if timeline.legacy %}<p class="timeline-note">Older checkpoints use approximate interval boundaries.</p>{% endif %}
+    {% if timeline.timed_min + 0.5 < total %}<p class="timeline-note">The timeline excludes overlaps and minutes without usable time bounds; totals reflect recorded verdicts.</p>{% endif %}
+    {% else %}<p class="empty">{{ 'These older checkpoints have no usable time bounds.' if total else 'Your first successful checkpoint will appear here.' }}</p>{% endif %}
+  </section>
+  {% if goal_allocations %}
+  <section class="intentions" aria-label="Goal time allocation">
+    <div class="section-heading"><h2>Time toward your intentions</h2><span class="kicker">{{ 'Planned vs actual' if goal_allocations | selectattr('target_minutes') | list else 'Time allocation' }}</span></div>
+    {% for goal in goal_allocations %}
+    <div class="goal-row">
+      <div class="goal-heading"><span class="goal-name">{{ goal.goal }}</span><span class="num">{{ goal.actual_label }}{% if goal.target_label %}<span class="goal-target"> / {{ goal.target_label }} planned</span>{% endif %}</span></div>
+      <div class="goal-track" aria-hidden="true"><span style="width: {{ goal.bar_pct }}%"></span></div>
+      <div class="goal-caption"><span>{{ 'Marked done by you' if goal.completed else 'Not marked done' }}</span><span>{% if goal.over_minutes %}{{ goal.over_minutes | duration }} over plan{% elif not goal.target_minutes %}Share of time matched to goals{% endif %}</span></div>
+    </div>
+    {% endfor %}
+    <p class="timeline-note">Time spent does not prove completion. Mark goals done from the notch’s “Review goals…” menu.</p>
+  </section>
   {% endif %}
-
+  <div class="sections">
   {% if categories %}
-  <h2>Where the time went</h2>
+  <details class="report-detail" id="category-detail"><summary>Time by category<span class="chev" aria-hidden="true">+</span></summary>
   <div class="stack" aria-hidden="true">
     {% for c in categories %}<span style="flex: {{ c.minutes }}; background: {{ c.color }}"></span>{% endfor %}
   </div>
@@ -198,39 +250,16 @@
     </div>
     {% endfor %}
   </div>
+  </details>
   {% endif %}
 
-  {% if synthesis.goal_progress %}
-  <h2>Goals</h2>
-  <div class="group">
-    {% for g in synthesis.goal_progress %}
-    <div class="row">
-      <div><div class="g">{{ g.goal }}</div><div class="v">{{ g.verdict }}</div></div>
-      <div class="t num">{{ g.time_min }} min</div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if synthesis.drift %}
-  <h2>Where you drifted</h2>
-  <div class="group">
-    {% for d in synthesis.drift %}
-    <div class="row drift">
-      <span class="drift-dot"></span>
-      <div><div class="g">{{ d.what }}</div><div class="v">{{ d.when }}{% if d.time_min %} · {{ d.time_min }} min{% endif %}</div></div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <h2>Sessions</h2>
+  <details class="report-detail" id="sessions-detail"><summary>Sessions<span class="chev" aria-hidden="true">+</span></summary>
   {% if sessions %}
   <div class="group">
     {% for s in sessions %}
-    <details>
+    <details id="session-{{ loop.index }}">
       <summary>
-        <span class="chev">▶</span>
+        <span class="chev" aria-hidden="true">+</span>
         <span class="when num">{{ s.start or "—" }} – {{ s.end or "open" }}</span>
         <span class="dur num">{{ s.duration }}</span>
       </summary>
@@ -239,7 +268,7 @@
         <div class="tick">
           <div class="clk num">{{ c.t }}</div>
           <div><div class="act">{{ c.activity }}</div><div class="note">{{ c.note }}</div></div>
-          <div style="text-align:right">
+          <div class="verdict" style="text-align:right">
             <span class="pill">{{ c.category | catlabel }}</span>
             <div class="goalflag {{ 'yes' if c.aligned else 'no' }}">{{ 'On goal' if c.aligned else 'Off goal' }}</div>
           </div>
@@ -255,6 +284,17 @@
   <div class="group"><div class="empty">No sessions recorded today.</div></div>
   {% endif %}
 
+  </details>
+  {% if synthesis.coach_verdict or synthesis.tactical_rule or synthesis.tomorrow %}
+  <details class="report-detail" id="reflection-detail"><summary>Daily reflection<span class="chev" aria-hidden="true">+</span></summary>
+  <div class="hero"><p class="headline">{{ synthesis.headline }}</p>{% if synthesis.coach_verdict %}<p class="coach">{{ synthesis.coach_verdict }}</p>{% endif %}</div>
+  {% if synthesis.tactical_rule %}
+  <div class="rule">
+    <div class="t">Rule for tomorrow</div>
+    <div class="b">{{ synthesis.tactical_rule }}</div>
+  </div>
+  {% endif %}
+
   {% if synthesis.tomorrow %}
   <h2>Tomorrow</h2>
   <div class="group tomorrow">
@@ -262,11 +302,38 @@
   </div>
   {% endif %}
 
+  </details>
+  {% endif %}
+  </div>
+  <aside class="report-note">
+    {% if demo %}<strong>DEMO — synthetic activity only.</strong> {% endif %}
+    Goal alignment is an AI estimate, not a measure of task completion.
+    {% if live %}Checkpoint totals update while tracking. Daily reflection is generated with View report or End day.{% elif offline %}Model synthesis skipped.{% endif %}
+    Review before sharing; reports can contain sensitive summaries.
+  </aside>
   <footer>
-    {% if offline %}Synthetic recorded verdicts; model synthesis skipped.{% else %}AI estimates use {{ model_name }} through local Ollama.{% endif %}<br>
-    Capture pixels are processed in memory. Reports may contain sensitive summaries.
+    <span class="footer-brand">A day, accounted for.</span>
+    <span>{% if demo %}Synthetic recorded verdicts{% else %}{{ model_name }} · Local inference{% endif %}<br>FocusLedger · On your Mac.</span>
   </footer>
-
-</div>
+</main>
+{% if live %}
+<script>
+(() => {
+  const key = 'focusledger:{{ selected_day }}';
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (saved) {
+      for (const id of saved.open || []) { const node = document.getElementById(id); if (node) node.open = true; }
+      requestAnimationFrame(() => window.scrollTo(0, saved.scroll || 0));
+    }
+  } catch (_) {}
+  setInterval(() => {
+    if (document.hidden) return;
+    try { sessionStorage.setItem(key, JSON.stringify({scroll:window.scrollY, open:[...document.querySelectorAll('details[open][id]')].map(node => node.id)})); } catch (_) {}
+    window.location.reload();
+  }, 30000);
+})();
+</script>
+{% endif %}
 </body>
 </html>

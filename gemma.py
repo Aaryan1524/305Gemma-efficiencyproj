@@ -10,6 +10,7 @@ import os
 import re
 
 import paths
+from goals import split_goals
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -203,11 +204,11 @@ Reply with ONLY this JSON, no other text:
  "note": "<one short sentence of evidence>"}
 No preamble, no markdown fences."""
 
-REPORT_SYS = """You are an elite cognitive performance coach. You get today's goals and a list of
+REPORT_SYS = """Reflect on recorded activity against the user's goals. Never infer task completion, fatigue, stress, or health from screen use. You get today's goals and a list of
 30-minute verdicts from work sessions. Be specific and direct — no filler,
 no praise padding. Reply with ONLY this JSON:
 {"headline": "<one sentence summarizing the day>",
- "coach_verdict": "<two sentence sharp executive assessment of cognitive performance & flow>",
+ "coach_verdict": "<two concise sentences about recorded goal alignment>",
  "tactical_rule": "<one single friction rule to eliminate drift tomorrow>",
  "goal_progress": [{"goal": "...", "time_min": 0, "verdict": "<one line>"}],
  "drift": [{"what": "...", "time_min": 0, "when": "..."}],
@@ -280,10 +281,7 @@ def _goal_options(goals):
     they type — otherwise dictated goals collapse to a single option and
     every block has to be attributed to all of them at once, or to 'none'.
     """
-    parts = [p.strip(" .,-") for p in
-             re.split(r"[;\n,]|\band then\b|\band\b", goals) if p.strip(" .,-")]
-    parts = [p for p in dict.fromkeys(parts) if len(p) > 3][:6]
-    return (parts or [goals.strip() or "none"]) + ["none"]
+    return (split_goals(goals) or ["none"]) + ["none"]
 
 
 def checkpoint(goals, samples):
