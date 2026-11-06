@@ -1,8 +1,8 @@
 # Third-party components
 
 FocusLedger's source is MIT licensed. Dependencies retain their own licenses and
-are installed separately; this source release does not bundle their code or model
-weights. See requirements-lock.txt for exact Python versions and the license files
+are installed separately; this source release does not bundle runtime dependency
+code or model weights. The bundled typefaces are listed below. See requirements-lock.txt for exact Python versions and the license files
 inside each installed distribution for full notices.
 
 | Component | License / source |
@@ -22,3 +22,10 @@ inside each installed distribution for full notices.
 Apple frameworks are supplied by macOS. Microsoft HVE Core inspired the repository
 workflow; no HVE framework is installed or vendored by this project. Do not assume
 FocusLedger's MIT license applies to downloaded model weights.
+
+## Bundled typefaces
+
+Geist and Instrument Serif are bundled in `assets/fonts` under the SIL Open Font
+License 1.1. Their full copyright notices and licenses are included alongside the
+font files and embedded in exported reports. Source: the Google Fonts `ofl/geist`
+and `ofl/instrumentserif` directories. Native registration is process-local.

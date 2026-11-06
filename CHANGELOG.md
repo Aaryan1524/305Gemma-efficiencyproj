@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Redesign the native notch and daily report with Geist, Instrument Serif, warm
+  paper/ink palettes, muted accents, and a minimal editorial hierarchy.
+- Bundle OFL fonts locally and embed fonts/licenses in standalone reports.
+
 ## 0.1.0a1 — unreleased
 
 - Prepare a source-based public alpha with MIT licensing and contributor workflows.

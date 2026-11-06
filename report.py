@@ -17,6 +17,7 @@ from jinja2 import Environment, FileSystemLoader
 
 import gemma
 import paths
+from typography import report_font_css
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 LEDGER_PATH = paths.LEDGER_PATH
@@ -229,7 +230,7 @@ def render(data, out_path=OUT_PATH):
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     env.filters["catlabel"] = lambda k: meta_for(k)["label"]
     env.filters["catcolor"] = lambda k: meta_for(k)["color"]
-    html = env.get_template(TEMPLATE_NAME).render(**data)
+    html = env.get_template(TEMPLATE_NAME).render(font_css=report_font_css(), **data)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as f:
         f.write(html)
