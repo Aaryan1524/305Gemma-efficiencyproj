@@ -38,3 +38,30 @@ and temporary ledger; no personal activity is read or uploaded.
 
 This is an early source alpha, not a signed/notarized standalone distribution.
 See releasing.md for reproduction and remaining compatibility coverage.
+
+
+## Performance report update
+
+The performance report replaces the previous time-only view with alignment,
+deep-work time, drift, a personal baseline, an interval timeline, and per-goal time
+allocation. Optional morning budgets and explicit user check-offs are stored in the
+ledger. The original borderless black notch outline is preserved.
+
+- `make check` with the isolated Python 3.12 environment: 43 tests passed, plus lint,
+  shell syntax and documentation-link checks.
+- Native AppKit accessory controls: target entry, invalid-target cancellation,
+  starting a day with targets, and recording completion passed programmatic tests.
+- Live integration: successful checkpoint → persisted interval → atomic local HTML
+  passed; classification/report failures preserve saved data as appropriate.
+- Refresh script: visible reload, hidden-page pause, and scroll/disclosure persistence
+  passed a JavaScript runtime check. Frozen exports contain no reload script.
+- Isolated nonpersistent WebKit rendering: 900px light and 390px dark reports loaded
+  bundled fonts and passed horizontal-overflow checks; both PNGs were visually inspected.
+- A deterministic synthetic week supplies the committed demo; no personal history,
+  screen captures, or browser profiles were used to create it.
+
+Chrome access was declined in the earlier design task and was not retried. The report
+renderer uses its own generated content in a separate test view, not a user browser.
+Interactive native preview entry was unreliable through computer-use controls;
+programmatic native-control tests cover the planning and completion forms. Hosted
+CI results for this change are tracked in PR #9.

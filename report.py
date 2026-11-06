@@ -8,6 +8,9 @@ the thing no rules engine can do.
 """
 
 import argparse
+import fcntl
+import tempfile
+from datetime import date, datetime
 import json
 import os
 import webbrowser
@@ -18,6 +21,7 @@ from jinja2 import Environment, FileSystemLoader
 import gemma
 import paths
 from typography import report_font_css
+import report_metrics as facts
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 LEDGER_PATH = paths.LEDGER_PATH
@@ -121,120 +125,86 @@ def _disp_min(val):
     return max(1, round(val)) if val > 0 else 0
 
 
-def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False):
-    """Assemble everything the template needs: facts from the ledger + Gemma's synthesis."""
-    rows = paths.rows_for_day(load_rows(path), day)
-    goals = latest_goals(rows)
-    sessions = build_sessions(rows)
+def build_report(path=LEDGER_PATH, day=None, demo=False, offline=False, live=False):
+    """One day's deterministic facts and an optional, clearly separate AI reflection."""
+    all_rows = facts.dated_rows(load_rows(path))
+    selected = day or (all_rows[-1]['date'] if all_rows else date.today().isoformat())
+    date.fromisoformat(selected)
+    data = facts.metrics(all_rows, selected)
+    rows = data['rows']
+    normalized = iter(data['items'])
+    # Keep session markers while dropping corrupt checkpoints.
+    # Reconstruct with normalized checkpoint verdicts in their original order.
+    session_rows = []
+    for row in rows:
+        if row.get('type') == 'checkpoint':
+            if not isinstance(row.get('verdict'), dict) or not facts.number(row.get('minutes')):
+                continue
+            session_rows.append(next(normalized))
+        else:
+            session_rows.append(row)
+    sessions = build_sessions(session_rows)
     verdicts = all_verdicts(sessions)
-
+    goals = latest_goals(rows)
     cat_min = category_minutes(sessions)
-    total_min = sum(cat_min.values())
-
-    # Focus Score: share of tracked time whose verdict was aligned with a goal.
-    aligned_min = sum((c.get("minutes", 0) or 0)
-                      for s in sessions for c in s["checkpoints"] if c.get("aligned"))
-    focus_score = round(100 * aligned_min / total_min) if total_min else 0
-
-    categories = [
-        {
-            "key": k,
-            "label": meta_for(k)["label"],
-            "color": meta_for(k)["color"],
-            "minutes": _disp_min(v),
-            "pct": max(1, round(100 * v / total_min)) if total_min else 0,
-        }
-        for k, v in sorted(cat_min.items(), key=lambda kv: -kv[1])
-        if v > 0
-    ]
-
-    # Cognitive Metrics (WHOOP-style Trio & Health Monitors)
-    cognitive_strain = min(21.0, round((total_min / 60) * 2.2 + (aligned_min / 60) * 1.8, 1)) if total_min else 0.0
-    if total_min > 0 and cognitive_strain == 0.0:
-        cognitive_strain = 0.5
-
-    # Context switching / Friction index (unique activities / hour)
-    unique_acts = set(c.get("activity", "") for s in sessions for c in s["checkpoints"] if c.get("activity"))
-    switches_per_hr = round(len(unique_acts) / max(0.5, total_min / 60), 1) if total_min else 0.0
-
-    # Longest Deep Work Flow Streak (contiguous aligned checkpoints)
-    max_streak_min = 0
-    curr_streak = 0
-    for s in sessions:
-        curr_streak = 0
-        for c in s["checkpoints"]:
-            if c.get("aligned"):
-                curr_streak += c.get("minutes", 30) or 30
-                if curr_streak > max_streak_min:
-                    max_streak_min = curr_streak
-            else:
-                curr_streak = 0
-    max_streak_min = _disp_min(max_streak_min)
-
-    # Peak Productivity Window
-    peak_window = "N/A"
-    if sessions and verdicts:
-        best_sess = max(sessions, key=lambda s: sum(1 for c in s["checkpoints"] if c.get("aligned")))
-        if best_sess.get("start") and best_sess.get("end"):
-            peak_window = f"{best_sess['start']} – {best_sess['end']}"
-        elif best_sess.get("start"):
-            peak_window = f"{best_sess['start']} – active"
-
-    # Gemma call site #2 — synthesize the whole day. Degrade gracefully if it fails.
-    try:
-        synthesis = gemma.daily_report(goals, verdicts) if verdicts and not offline else {
-            "headline": "A sample day, by the numbers" if demo and verdicts else ("Recorded activity, by the numbers" if verdicts else "No activity recorded today.")
-        }
-    except Exception as e:
-        synthesis = {
-            "headline": "Gemma synthesis unavailable; showing recorded activity only",
-            "coach_verdict": "Cognitive report synthesis could not be completed.",
-            "tactical_rule": "Maintain focused blocks without multi-tasking.",
-            "goal_progress": [], "drift": [], "tomorrow": []
-        }
-
-    max_cat_min = max((c["minutes"] for c in categories), default=0)
-
-    from datetime import datetime
-    stamp = next((row.get("date") for row in reversed(rows) if row.get("type") == "goals" and row.get("date")), None)
-    try:
-        day = datetime.strptime(stamp, "%Y-%m-%d") if stamp else datetime.now()
-    except ValueError:
-        day = datetime.now()
-
-    return {
-        "demo": demo,
-        "offline": offline,
-        "report_date": f"{day:%A, %B} {day.day}",
-        "model_name": gemma.get_model(),
-        "goals": goals,
-        "sessions": sessions,
-        "categories": categories,
-        "total_min": _disp_min(total_min),
-        "aligned_min": _disp_min(aligned_min),
-        "drift_min": _disp_min(cat_min.get("drift", 0)),
-        "deep_min": _disp_min(cat_min.get("deep_work", 0)),
-        "focus_score": focus_score,
-        "cognitive_strain": cognitive_strain,
-        "drift_pct": round(100 * cat_min.get("drift", 0) / total_min) if total_min else 0,
-        "switches_per_hr": switches_per_hr,
-        "max_streak_min": max_streak_min,
-        "peak_window": peak_window,
-        "max_cat_min": max_cat_min,
-        "meta_for": meta_for,
-        "synthesis": synthesis,
-    }
+    categories = [{'key': key, 'label': meta_for(key)['label'], 'color': meta_for(key)['color'],
+                   'minutes': _disp_min(value), 'pct': round(100 * value / data['total']) if data['total'] else 0}
+                  for key, value in sorted(cat_min.items(), key=lambda item: -item[1]) if value > 0]
+    synthesis = {'headline': 'Your day so far' if live else ('A sample day, by the numbers' if demo else 'Recorded activity, by the numbers')}
+    if not verdicts:
+        synthesis = {'headline': 'No classified activity yet.'}
+    elif not offline:
+        try:
+            synthesis = gemma.daily_report(goals, verdicts)
+        except Exception:
+            synthesis = {'headline': 'Gemma synthesis unavailable; showing recorded activity only'}
+    checkpoint_label = data['last_checkpoint']
+    if checkpoint_label and 'T' in checkpoint_label:
+        checkpoint_label = checkpoint_label.split('T', 1)[1][:5]
+    elif checkpoint_label:
+        checkpoint_label = checkpoint_label[:5]
+    day_date = date.fromisoformat(selected)
+    return {**data, 'demo': demo, 'offline': offline, 'live': live,
+            'report_date': f'{day_date:%A, %B} {day_date.day}', 'model_name': gemma.get_model(),
+            'intentions': goals, 'goal_allocations': data['goals'], 'sessions': sessions,
+            'categories': categories, 'total_min': _disp_min(data['total']),
+            'total_label': facts.duration(data['total']), 'deep_label': facts.duration(data['deep']),
+            'drift_label': facts.duration(data['drift']), 'aligned_label': facts.duration(data['aligned']),
+            'aligned_min': _disp_min(data['aligned']), 'deep_min': _disp_min(data['deep']),
+            'drift_min': _disp_min(data['drift']), 'focus_score': data['score'],
+            'last_checkpoint_label': checkpoint_label, 'generated_at': datetime.now().strftime('%H:%M'),
+            'synthesis': synthesis, 'meta_for': meta_for}
 
 
 def render(data, out_path=OUT_PATH):
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
+    env.filters["duration"] = facts.duration
     env.filters["catlabel"] = lambda k: meta_for(k)["label"]
     env.filters["catcolor"] = lambda k: meta_for(k)["color"]
     html = env.get_template(TEMPLATE_NAME).render(font_css=report_font_css(), **data)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    with open(out_path, "w") as f:
-        f.write(html)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=os.path.dirname(os.path.abspath(out_path)), delete=False) as output:
+            temp_path = output.name
+            output.write(html)
+        os.replace(temp_path, out_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
     return out_path
+
+
+def write_report(path=LEDGER_PATH, out_path=OUT_PATH, **options):
+    """Serialize publishers and atomically replace HTML; browsers never read half a page."""
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(str(out_path) + '.lock', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return render(build_report(path, **options), out_path)
+
+
+def refresh_live(path=LEDGER_PATH, day=None, live=True):
+    return write_report(path, OUT_PATH, day=day, offline=True, live=live)
 
 
 def main():
@@ -244,6 +214,7 @@ def main():
     ap.add_argument("--open", action="store_true", help="open the report in a browser")
     ap.add_argument("--json", action="store_true", help="also print the synthesis JSON")
     ap.add_argument("--date", help="report day (YYYY-MM-DD); defaults to latest recorded day")
+    ap.add_argument("--live", action="store_true", help="refresh the open local report every 30 seconds")
     ap.add_argument("--demo", action="store_true", help="label synthetic data")
     ap.add_argument("--offline", action="store_true", help="skip model synthesis")
     args = ap.parse_args()
@@ -251,11 +222,16 @@ def main():
     if not os.path.exists(args.ledger):
         raise SystemExit(f"No ledger at {args.ledger}. Run focusledger.py first, or seed.py for a demo.")
 
-    data = build_report(args.ledger, day=args.date, demo=args.demo, offline=args.offline)
+    try:
+        if args.date:
+            date.fromisoformat(args.date)
+    except ValueError:
+        ap.error('--date must be YYYY-MM-DD')
+    out = write_report(args.ledger, args.out, day=args.date, demo=args.demo,
+                       offline=args.offline, live=args.live and not args.demo and not args.date)
     if args.json:
-        print(json.dumps(data["synthesis"], indent=2))
-    out = render(data, args.out)
-    print(f"📄 wrote {out}  ({len(data['sessions'])} sessions, {data['total_min']} min tracked)")
+        print(json.dumps(build_report(args.ledger, day=args.date, offline=True)['synthesis'], indent=2))
+    print(f'📄 wrote {out}')
     if args.open:
         if not webbrowser.open("file://" + os.path.abspath(out)):
             raise SystemExit("Report saved, but the browser could not be opened.")

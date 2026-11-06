@@ -42,6 +42,8 @@ import paths
 import focusledger as fl
 import gemma
 from typography import register_native_fonts
+import goals as goal_data
+import report
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PYTHON = sys.executable
@@ -58,7 +60,7 @@ SAMPLE_GOALS = "Ship the onboarding; study calculus integrals; keep Slack under 
 FRAME_W, FRAME_H = 840, 400
 
 # Expanded content height per screen (below the menu-bar band).
-VIEW_HEIGHTS = {"setup": 296, "goals": 170, "tracking": 148, "done": 148}
+VIEW_HEIGHTS = {"setup": 296, "goals": 204, "tracking": 148, "done": 148}
 
 # Spring tuned to the "balanced" dynamic-notch feel: response ~0.47s,
 # damping fraction 0.77.
@@ -271,7 +273,9 @@ class App(AppKit.NSObject):
         self.quick_mode = bool(os.environ.get("FL_DEV"))
         self.flush_event = threading.Event()
         self.flush_ok = False
+        self.report_busy = False
         self.goals = fl.load_todays_goals()
+        self.goal_targets = {}
         self.preview = os.environ.get("FL_PREVIEW")   # setup | goals | tracking | done (design review)
         self.pull_pct = None
         self.pull_error = None
@@ -645,7 +649,7 @@ class App(AppKit.NSObject):
             self.field.setDrawsBackground_(False)
             self.field.setFocusRingType_(AppKit.NSFocusRingTypeNone)
             self._placeholder("Ship the demo, study calc, keep Slack short")
-            self.field.setTarget_(self); self.field.setAction_("startDay:")
+            self.field.setTarget_(None); self.field.setAction_(None)
             self.content.addSubview_(self.field)
 
             title, sym = self._mic_label()
@@ -654,6 +658,9 @@ class App(AppKit.NSObject):
             self.content.addSubview_(self.micBtn)
             self.content.addSubview_(self._pill("Start day", "startDay:",
                                                 AppKit.NSMakeRect(W - pad - 112, row_y, 112, 36), "primary"))
+            self.content.addSubview_(self._pill("Plan time…", "planTime:",
+                                                AppKit.NSMakeRect(pad, 16, 112, 28), "secondary", size=12))
+            self.content.addSubview_(_label("Optional minutes for each goal", AppKit.NSMakeRect(pad + 124, 22, inner - 124, 16), _font(11), MUTED))
             self.panel.makeKeyAndOrderFront_(None)
             AppKit.NSApp.activateIgnoringOtherApps_(True)
             self.panel.makeFirstResponder_(self.field)
@@ -763,6 +770,7 @@ class App(AppKit.NSObject):
             self._menu_item(menu, "Fill sample goals", "fillSampleGoals:")
         self._menu_item(menu, "Preview a full-day report", "demoReport:")
         if view in ("tracking", "done"):
+            self._menu_item(menu, "Review goals…", "reviewGoals:")
             self._menu_item(menu, "Start a new day", "resetDay:")
         menu.addItem_(AppKit.NSMenuItem.separatorItem())
         self._menu_item(menu, "Quit FocusLedger", "quitApp:")
@@ -976,14 +984,107 @@ class App(AppKit.NSObject):
 
     # ---------- session lifecycle & reports ----------
 
+    @objc.python_method
+    def _goal_alert(self, title, message, count):
+        alert = AppKit.NSAlert.alloc().init()
+        alert.setMessageText_(title)
+        alert.setInformativeText_(message)
+        alert.addButtonWithTitle_("Save")
+        alert.addButtonWithTitle_("Cancel")
+        height = 42 * count + 30
+        view = AppKit.NSView.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 460, height))
+        alert.setAccessoryView_(view)
+        alert.window().setAppearance_(AppKit.NSAppearance.appearanceNamed_(AppKit.NSAppearanceNameDarkAqua))
+        self.panel.makeKeyAndOrderFront_(None)
+        AppKit.NSApp.activateIgnoringOtherApps_(True)
+        return alert, view, height
+
+    def planTime_(self, sender):
+        names = goal_data.split_goals(self.field.stringValue().strip())
+        if not names:
+            self._placeholder("Add your goals before planning time")
+            return
+        alert, view, height = self._goal_alert("Time for what matters", "Optional targets in minutes. Leave a field blank for no target.", len(names))
+        fields = {}
+        for index, name in enumerate(names):
+            y = height - 36 - index * 42
+            label = _label(name, AppKit.NSMakeRect(0, y, 320, 22), _font(13), INK)
+            label.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
+            label.setToolTip_(name)
+            view.addSubview_(label)
+            field = AppKit.NSTextField.alloc().initWithFrame_(AppKit.NSMakeRect(330, y, 80, 24))
+            field.setFont_(_font(13))
+            field.setPlaceholderString_("Optional")
+            field.setStringValue_(str(self.goal_targets.get(name) or ''))
+            field.setAccessibilityLabel_("Target minutes for " + name)
+            view.addSubview_(field)
+            view.addSubview_(_label("min", AppKit.NSMakeRect(420, y, 35, 22), _font(12), MUTED))
+            fields[name] = field
+        error = _label('', AppKit.NSMakeRect(0, 0, 460, 22), _font(11), RED)
+        view.addSubview_(error)
+        while alert.runModal() == AppKit.NSAlertFirstButtonReturn:
+            try:
+                self.goal_targets = {name: goal_data.parse_target(field.stringValue()) for name, field in fields.items()}
+                return
+            except ValueError as exc:
+                error.setStringValue_(str(exc))
+
+    def reviewGoals_(self, sender):
+        if self.report_busy:
+            self._report_status("A report is being prepared. Review goals when it finishes")
+            return
+        if self.preview:
+            plan = [{'goal': goal, 'completed': False, 'target_minutes': None} for goal in goal_data.split_goals(self.goals or SAMPLE_GOALS)]
+        else:
+            try:
+                rows = paths.rows_for_day(report.load_rows(paths.LEDGER_PATH), date.today().isoformat())
+                plan = goal_data.day_plan(rows)
+            except OSError:
+                self._report_status("Start your day before reviewing goals")
+                return
+        if not plan:
+            self._report_status("No goals recorded for today")
+            return
+        alert, view, height = self._goal_alert("Your intentions, reviewed", "Check only goals you consider finished. Time spent does not mark a task complete.", len(plan))
+        checks = []
+        for index, goal in enumerate(plan):
+            check = AppKit.NSButton.checkboxWithTitle_target_action_(goal['goal'], None, None)
+            check.setFont_(_font(13))
+            check.setFrame_(AppKit.NSMakeRect(0, height - 36 - index * 42, 460, 24))
+            check.setState_(AppKit.NSControlStateValueOn if goal['completed'] else AppKit.NSControlStateValueOff)
+            check.setToolTip_(goal['goal'])
+            view.addSubview_(check)
+            checks.append((goal, check))
+        if alert.runModal() != AppKit.NSAlertFirstButtonReturn or self.preview:
+            return
+        for goal, check in checks:
+            completed = check.state() == AppKit.NSControlStateValueOn
+            if completed != goal['completed']:
+                fl.append_ledger({'type': 'goal_status', 'goal': goal['goal'], 'completed': completed})
+        self._startReportTask(self._refreshGoalReport)
+
+    @objc.python_method
+    def _refreshGoalReport(self):
+        try:
+            active = self.tracker is not None and self.tracker.poll() is None
+            report.write_report(paths.LEDGER_PATH, report.OUT_PATH, day=date.today().isoformat(), offline=active, live=active)
+            self._report_status("Goal review saved. Report updated")
+        except Exception:
+            self._report_status("Goal review saved. Report could not be updated")
+
     def startDay_(self, sender):
         goals = self.field.stringValue().strip()
         if not goals:
             self._placeholder("Add at least one goal to start")
             return
+        if self.preview:
+            self.goals = goals
+            self._apply_preview("tracking")
+            return
         self.goals = goals
         self.day_done = False
-        fl.append_ledger({"type": "goals", "date": date.today().isoformat(), "goals": goals})
+        fl.append_ledger({"type": "goals", "date": date.today().isoformat(), "goals": goals,
+                          "goal_plans": [{"goal": name, "target_minutes": self.goal_targets.get(name)} for name in goal_data.split_goals(goals)]})
         self.startTracker()
         self.setExpanded_(False)
 
@@ -1017,10 +1118,7 @@ class App(AppKit.NSObject):
         if line.startswith("⛔"):
             return None, "Skipped a private window"
         if line.startswith("📒"):
-            parts = [p.strip() for p in line.split("|")]
-            cat = parts[0].split(":")[-1].strip().replace("_", " ").capitalize()
-            aligned = len(parts) > 1 and "True" in parts[1]
-            return None, f"Last block: {cat}, {'on goal' if aligned else 'off goal'}"
+            return None, "Checkpoint saved"
         return None, None
 
     def _reader(self):
@@ -1040,6 +1138,9 @@ class App(AppKit.NSObject):
                 self.flush_ok = line == "FL_FLUSH_OK"
                 self.flush_event.set()
                 continue
+            elif line == "FL_REPORT_FAILED":
+                self._report_status("Checkpoint saved; report update failed")
+                continue
             elif line == "FL_DAY_ENDED":
                 self.day_done = True
                 self.status["line"] = "New day: enter fresh goals to resume"
@@ -1056,6 +1157,23 @@ class App(AppKit.NSObject):
             self.flush_event.set()
             self._report_status("Tracker stopped before its checkpoint; restart tracking")
 
+    @objc.python_method
+    def _startReportTask(self, task):
+        if self.report_busy:
+            self._report_status("A report is already being prepared")
+            return
+        self.report_busy = True
+        threading.Thread(target=self._runReportTask, args=(task,), daemon=True).start()
+
+    @objc.python_method
+    def _runReportTask(self, task):
+        try:
+            task()
+        except Exception:
+            self._report_status("Report could not be updated. Please try again")
+        finally:
+            self.report_busy = False
+
     def viewReport_(self, sender):
         """Flush any active buffer via SIGUSR1, then render and open today's report."""
         ledger = paths.LEDGER_PATH
@@ -1065,7 +1183,7 @@ class App(AppKit.NSObject):
             return
         self.status["line"] = "Gemma is writing your report…"
         self.rebuild()
-        threading.Thread(target=self._renderReport, daemon=True).start()
+        self._startReportTask(self._renderReport)
 
     @objc.python_method
     def _report_status(self, message):
@@ -1085,8 +1203,10 @@ class App(AppKit.NSObject):
             except OSError:
                 self._report_status("Tracker stopped. Report may be incomplete")
                 return
-        result = subprocess.run([PYTHON, os.path.join(BASE, "report.py"),
-                                 paths.LEDGER_PATH, "--open"], cwd=BASE)
+        command = [PYTHON, os.path.join(BASE, "report.py"), paths.LEDGER_PATH, "--open"]
+        if self.tracker is not None and self.tracker.poll() is None:
+            command.append('--live')
+        result = subprocess.run(command, cwd=BASE)
         self._report_status("Report opened in your browser" if result.returncode == 0
                             else "Report failed. Check Ollama and retry")
 
@@ -1112,6 +1232,7 @@ class App(AppKit.NSObject):
             return
         fl.reset_todays_ledger()
         self.goals = None
+        self.goal_targets = {}
         self.day_done = False
         self.session_start = None
         self.status = dict(IDLE_STATUS)
@@ -1119,10 +1240,13 @@ class App(AppKit.NSObject):
         self.apply_state(animate=True)
 
     def endDay_(self, sender):
+        if self.report_busy:
+            self._report_status("A report is being prepared. End the day when it finishes")
+            return
         self.status["session"] = "Wrapping up"
         self.status["line"] = "Gemma is reading your day"
         self.rebuild()
-        threading.Thread(target=self._closeAndReport, daemon=True).start()
+        self._startReportTask(self._closeAndReport)
 
     def _closeAndReport(self):
         proc, self.tracker = self.tracker, None

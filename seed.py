@@ -1,95 +1,66 @@
-"""Generate synthetic sample ledger data without reading personal activity."""
-
+"""Generate a deterministic synthetic week and day without reading personal history."""
 import argparse
+from datetime import datetime, timedelta
 import json
 
-GOALS = "Ship the FocusLedger capture loop; study for the calculus exam; keep Slack in check"
-
-# A plausible seeded day. The morning here is illustrative; when you pass a real
-# --base ledger, your real morning replaces it and only the evening/night are added.
-MORNING = [
-    {"type": "session_open", "t": "09:12:00"},
-    {"type": "checkpoint", "t": "09:42:00", "samples": 180, "minutes": 30, "verdict": {
-        "activity": "Building the session + capture loop", "category": "deep_work",
-        "goal": "Ship the FocusLedger capture loop", "aligned": True, "confidence": "high",
-        "note": "Editing focusledger.py, idle-detection state machine on screen."}},
-    {"type": "checkpoint", "t": "10:12:00", "samples": 174, "minutes": 29, "verdict": {
-        "activity": "Wiring Vision OCR and deleting images", "category": "deep_work",
-        "goal": "Ship the FocusLedger capture loop", "aligned": True, "confidence": "high",
-        "note": "vision_ocr.py open; terminal shows captures/ staying empty."}},
-    {"type": "checkpoint", "t": "10:41:00", "samples": 120, "minutes": 20, "verdict": {
-        "activity": "Clearing Slack threads with the team", "category": "communication",
-        "goal": "keep Slack in check", "aligned": True, "confidence": "medium",
-        "note": "Short replies across two project channels."}},
-    {"type": "session_close", "t": "11:05:00", "duration": "1h 53m"},
-]
-
-EVENING = [
-    {"type": "session_open", "t": "17:45:00"},
-    {"type": "checkpoint", "t": "18:15:00", "samples": 180, "minutes": 30, "verdict": {
-        "activity": "Watching calculus lecture on integrals", "category": "learning",
-        "goal": "study for the calculus exam", "aligned": True, "confidence": "high",
-        "note": "Lecture video focused; notes app open alongside."}},
-    {"type": "checkpoint", "t": "18:45:00", "samples": 168, "minutes": 28, "verdict": {
-        "activity": "Working through practice integrals", "category": "learning",
-        "goal": "study for the calculus exam", "aligned": True, "confidence": "high",
-        "note": "PDF problem set and scratch work visible."}},
-    {"type": "checkpoint", "t": "19:15:00", "samples": 108, "minutes": 18, "verdict": {
-        "activity": "Scrolling Reddit and YouTube shorts", "category": "drift",
-        "goal": "none", "aligned": False, "confidence": "high",
-        "note": "Feeds unrelated to any stated goal."}},
-    {"type": "checkpoint", "t": "19:50:00", "samples": 180, "minutes": 30, "verdict": {
-        "activity": "Refactoring the report template", "category": "deep_work",
-        "goal": "Ship the FocusLedger capture loop", "aligned": True, "confidence": "medium",
-        "note": "report.py and templates/report.html side by side."}},
-    {"type": "session_close", "t": "20:28:00", "duration": "2h 43m"},
-]
-
-NIGHT = [
-    {"type": "session_open", "t": "23:40:00"},
-    {"type": "checkpoint", "t": "00:10:00", "samples": 180, "minutes": 30, "verdict": {
-        "activity": "Writing the Kaggle submission writeup", "category": "admin",
-        "goal": "none", "aligned": True, "confidence": "medium",
-        "note": "Markdown editor with the submission outline."}},
-    {"type": "checkpoint", "t": "00:35:00", "samples": 150, "minutes": 25, "verdict": {
-        "activity": "Final review of practice problems", "category": "learning",
-        "goal": "study for the calculus exam", "aligned": True, "confidence": "high",
-        "note": "Returned to the integrals problem set."}},
-    {"type": "session_close", "t": "01:05:00", "duration": "1h 25m"},
-]
+GOAL_NAMES = ['Build FocusLedger', 'Study calculus', 'Keep communication intentional']
+GOALS = '; '.join(GOAL_NAMES)
 
 
-def load_rows(path):
+def checkpoint(start, minutes, category, goal):
+    end = start + timedelta(minutes=minutes)
+    return {'type': 'checkpoint', 'date': start.date().isoformat(), 't': end.strftime('%H:%M:%S'),
+            'start_at': start.isoformat(), 'end_at': end.isoformat(), 'recorded_at': end.isoformat(),
+            'minutes': minutes, 'samples': max(1, minutes * 6),
+            'verdict': {'activity': {'deep_work': 'Building the local report', 'learning': 'Working through calculus problems', 'drift': 'Browsing unrelated feeds'}[category],
+                        'category': category, 'goal': goal or 'none', 'aligned': goal is not None,
+                        'confidence': 'high', 'note': 'Illustrative activity generated for the sample report.'}}
+
+
+def sample_rows():
     rows = []
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:
-                    rows.append(json.loads(line))
-                except ValueError:
-                    pass
+    today = datetime(2026, 7, 24, 9)
+    # Seven distinct prior recorded days, averaging 74% alignment.
+    for offset, score in zip(range(7, 0, -1), [70, 78, 72, 75, 74, 76, 73]):
+        start = today - timedelta(days=offset)
+        day = start.date().isoformat()
+        rows.extend([{'type': 'goals', 'date': day, 'goals': GOALS}, {'type': 'session_open', 'date': day, 't': '09:00:00'}])
+        for category, remaining, goal in [('deep_work', 180, GOAL_NAMES[0]), ('learning', score * 3 - 180, GOAL_NAMES[1]), ('drift', 300 - score * 3, None)]:
+            while remaining > 0:
+                minutes = min(30, remaining)
+                rows.append(checkpoint(start, minutes, category, goal))
+                start += timedelta(minutes=minutes)
+                remaining -= minutes
+        rows.append({'type': 'session_close', 'date': day, 't': '14:00:00', 'duration': '5h'})
+    day = today.date().isoformat()
+    rows.append({'type': 'goals', 'date': day, 'goals': GOALS,
+                 'goal_plans': [{'goal': name, 'target_minutes': minutes} for name, minutes in zip(GOAL_NAMES, [180, 120, 30])]})
+    for hour, kinds in [(9, ['deep_work', 'deep_work', 'drift', 'learning', 'deep_work']),
+                        (13, ['learning', 'deep_work', 'drift', 'deep_work', 'deep_work', 'learning'])]:
+        start = today.replace(hour=hour)
+        rows.append({'type': 'session_open', 'date': day, 't': start.strftime('%H:%M:%S')})
+        for kind in kinds:
+            goal = GOAL_NAMES[0] if kind == 'deep_work' else GOAL_NAMES[1] if kind == 'learning' else None
+            rows.append(checkpoint(start, 30, kind, goal))
+            start += timedelta(minutes=30)
+        rows.append({'type': 'session_close', 'date': day, 't': start.strftime('%H:%M:%S'), 'duration': '2h 30m' if hour == 9 else '3h'})
+    rows.append({'type': 'goal_status', 'date': day, 'goal': GOAL_NAMES[0], 'completed': True})
     return rows
 
 
 def write_rows(rows, path):
-    with open(path, "w") as f:
-        for r in rows:
-            f.write(json.dumps(r) + "\n")
+    with open(path, 'w') as output:
+        for row in rows:
+            output.write(json.dumps(row) + '\n')
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Generate demo ledger data.")
-    ap.add_argument("--out", default="ledger.sample.jsonl", help="output ledger path")
-    args = ap.parse_args()
-
-    rows = [{"type": "goals", "date": "2026-07-24", "goals": GOALS}] + MORNING + EVENING + NIGHT
-
-    write_rows(rows, args.out)
-    n_sessions = sum(1 for r in rows if r.get("type") == "session_open")
-    print(f"🌱 wrote {args.out}  ({n_sessions} sessions)")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--out', default='ledger.sample.jsonl')
+    args = parser.parse_args()
+    write_rows(sample_rows(), args.out)
+    print(f'Synthetic sample written to {args.out}')
 
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

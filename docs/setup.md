@@ -52,3 +52,20 @@ It creates two synthetic windows, checks single-window capture and neighbor excl
 then optionally runs an installed local model and renders a report. Omitting `--model`
 checks native capture/OCR only. It never starts general activity tracking or changes
 permissions. The model must already be installed.
+
+## Daily report controls
+
+Separate goals with semicolons. Before Start day, **Plan time…** offers optional
+whole-minute targets (1–1440 per goal). After starting, **… → Review goals…** records
+your own completion decisions. Targets are stored with the morning goals, not inferred
+from the screen. **View report** includes the latest checkpoint; **End day** freezes
+the page. An open live report checks the regenerated local file every 30 seconds.
+Use `report.py --date YYYY-MM-DD --out /tmp/day.html` for a frozen historical report.
+
+Optional preview renderer (isolated WebKit, no personal browser access):
+
+```bash
+./venv/bin/python -m pip install -r requirements-dev.txt pyobjc-framework-WebKit==12.2.2
+make demo
+./venv/bin/python scripts/render_report_preview.py /tmp/focusledger-demo.html /tmp/report.png --width 390 --dark
+```

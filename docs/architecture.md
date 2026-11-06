@@ -25,3 +25,26 @@ Missing windows, denied access, or timeouts skip capture; never use a display fa
 The optional Swift Dictate.app owns microphone permission and requires on-device
 recognition. FocusLedger.app is an ad-hoc signed launcher tied to the checkout.
 No server or remotely hosted UI is required.
+
+## Live report data flow
+
+`report_metrics.py` computes the three headline metrics, previous-seven-recorded-day
+baseline, 30-minute timeline bins, and per-goal time. `goals.py` shares goal parsing,
+optional minute targets, and user completion state with the native UI and classifier.
+AI reflection is separate from deterministic accounting. An aligned verdict without
+a matching stated goal is counted as unmatched time.
+
+New checkpoint rows add `start_at`, `end_at`, and `recorded_at` ISO local timestamps;
+`t` now describes the interval end. Legacy end-time/minutes rows retain approximate
+timeline support. Missing time is not called idle, and missing days are excluded
+from baselines. Goal rows optionally include `goal_plans: [{goal, target_minutes}]`;
+`goal_status` rows append explicit `{goal, completed}` decisions. A new goals row
+resets completion assessment for that plan without deleting history.
+
+After a saved checkpoint, the tracker publishes an offline live snapshot. Report
+publishers serialize through a file lock and atomically replace the HTML. Model
+failures preserve the previous unclassified buffer; report I/O failures leave saved
+verdicts intact. Browser refresh is local reload only, with no server or telemetry.
+View report adds a reflection and live reload while tracking; End day removes reload.
+Demos and selected-date exports never auto-refresh. Concurrent manual report actions
+are gated so repeated clicks do not queue overlapping model summaries.

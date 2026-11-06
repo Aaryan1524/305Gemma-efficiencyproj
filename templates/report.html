@@ -131,6 +131,53 @@
     .row, .scoreboard, .tick { break-inside: avoid; }
     h2 { break-after: avoid; }
   }
+  /* Compact performance overview; details stay below the fold. */
+  .journal-header { margin: 28px 0 26px; }
+  .date { margin-bottom: 12px; }
+  h1 { font-size: clamp(42px, 7vw, 64px); line-height: 1.05; }
+  .scoreboard { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 24px; }
+  .score-value { font-size: clamp(38px, 7vw, 66px); margin-top: 10px; white-space: nowrap; }
+  .score-value small { font-size: 28px; }
+  .stat-label { margin: 0; }
+  .score-caption { margin-top: 12px; font-size: 12px; }
+  .report-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 15px 0; color: var(--muted); font-size: 11px; }
+  .section-heading { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin: 32px 0 20px; }
+  .section-heading h2 { margin: 0; }
+  .section-heading h2::before { content: none; }
+  .day-timeline { display: grid; gap: 3px; height: 28px; }
+  .time-bin { background: linear-gradient(to top, var(--green) 0 var(--aligned), var(--orange) var(--aligned) var(--classified), var(--track) var(--classified) 100%); }
+  .time-axis { position: relative; height: 24px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .time-axis span { position: absolute; transform: translateX(-50%); }
+  .time-axis span:first-child { transform: none; }
+  .time-axis span:last-child { transform: translateX(-100%); }
+  .timeline-legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 11px; color: var(--muted); }
+  .timeline-legend span { display: flex; align-items: center; gap: 7px; }
+  .timeline-legend i { width: 7px; height: 7px; background: var(--track); }
+  .timeline-legend .legend-aligned { background: var(--green); }
+  .timeline-legend .legend-drift { background: var(--orange); }
+  .timeline-note { color: var(--muted); font-size: 11px; margin: 14px 0 0; }
+  .goal-row { padding: 15px 0; }
+  .goal-row + .goal-row { border-top: 1px solid var(--line); }
+  .goal-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; font-size: 13px; }
+  .goal-name { flex: 1; min-width: 140px; overflow-wrap: anywhere; }
+  .goal-target { color: var(--muted); font-size: 12px; }
+  .goal-track { height: 4px; background: var(--track); margin: 13px 0 10px; }
+  .goal-track span { display: block; height: 100%; background: var(--green); }
+  .goal-caption { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; color: var(--muted); font-size: 11px; }
+  .sections { margin-top: 30px; border-top: 1px solid var(--line); }
+  .report-detail { border-bottom: 1px solid var(--line); padding-bottom: 0; }
+  .report-detail > summary { font-size: 13px; justify-content: space-between; }
+  .report-detail[open] { padding-bottom: 20px; }
+  .row > div, .tick > div { min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 620px) {
+    .scoreboard { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .score-main { grid-column: auto; }
+    .score-value { font-size: clamp(30px, 8vw, 45px); letter-spacing: -.05em; }
+    .score-value small { font-size: 20px; }
+    .stat-label, .score-caption { font-size: 11px; letter-spacing: 0; }
+    .section-heading h2 { font-size: 27px; }
+    .day-timeline { gap: 2px; }
+  }
 </style>
 </head>
 <body>
@@ -141,43 +188,56 @@
   </header>
   <div class="journal-header">
     <div class="date">{{ report_date }}</div>
-    <h1>Your day,<br><em>in focus.</em></h1>
+    <h1>Your day, <em>in focus.</em></h1>
   </div>
-  {% if goals %}
-  <section class="intention" aria-label="Morning intention">
-    <span class="kicker">Morning intention</span><p>{{ goals }}</p>
-  </section>
-  {% endif %}
-
-  <div class="hero">
-    <p class="headline">{{ synthesis.headline or "No activity recorded today." }}</p>
-    {% if synthesis.coach_verdict %}<p class="coach">{{ synthesis.coach_verdict }}</p>{% endif %}
-  </div>
-
   <section class="scoreboard" aria-label="Day at a glance">
     <div class="score-main">
-      <div class="score-value num">{{ focus_score }}<small>%</small></div>
-      <div class="score-caption">of tracked time aligned with your goals</div>
-      <div class="alignment" aria-hidden="true"><span style="width: {{ focus_score }}%"></span></div>
+      <div class="stat-label">Alignment</div>
+      <div class="score-value num">{% if focus_score is not none %}{{ focus_score }}<small>%</small>{% else %}—{% endif %}</div>
+      <div class="score-caption">{% if delta is not none %}{{ '+' if delta > 0 else '' }}{{ delta }} pp vs previous {{ baseline_count }} recorded {{ 'day' if baseline_count == 1 else 'days' }}{% else %}{{ 'No previous classified days yet' if total else 'Waiting for the first checkpoint' }}{% endif %}</div>
     </div>
-    <div><div class="stat-value num">{{ total_min // 60 }}h {{ total_min % 60 }}m</div><div class="stat-label">Time accounted for</div></div>
-    <div><div class="stat-value num">{{ drift_min }}<small> min</small></div><div class="stat-label">Time in drift</div></div>
+    <div>
+      <div class="stat-label">Deep work</div><div class="score-value num">{{ deep_label if total else '—' }}</div>
+      <div class="score-caption">Classified as focused work</div>
+    </div>
+    <div>
+      <div class="stat-label">Drift</div><div class="score-value num">{{ drift_label if total else '—' }}</div>
+      <div class="score-caption">Time not matched to your goals</div>
+    </div>
   </section>
-  <div class="metrics">
-    <div class="m"><div class="v num">{{ deep_min // 60 }}h {{ deep_min % 60 }}m</div><div class="l">Deep work</div></div>
-    <div class="m"><div class="v num">{{ aligned_min // 60 }}h {{ aligned_min % 60 }}m</div><div class="l">On goal</div></div>
-    <div class="m"><div class="v num">{{ switches_per_hr }}</div><div class="l">Activities / hr</div></div>
+  <div class="report-status">
+    <span>Based on {{ total_label }} classified · {% if last_checkpoint_label %}Last checkpoint {{ last_checkpoint_label }}{% else %}No checkpoints yet{% endif %}</span>
+    <span>{% if live %}<span class="status-dot" aria-hidden="true"></span> Auto-refresh · 30 sec{% else %}Snapshot · Generated {{ generated_at }}{% endif %}</span>
   </div>
-  <div class="sections">
-  {% if synthesis.tactical_rule %}
-  <div class="rule">
-    <div class="t">Rule for tomorrow</div>
-    <div class="b">{{ synthesis.tactical_rule }}</div>
-  </div>
+  {% if "unavailable" in synthesis.headline %}<p class="timeline-note">{{ synthesis.headline }}</p>{% endif %}
+  <section class="day-shape" aria-label="Day timeline">
+    <div class="section-heading"><h2>The shape of your day</h2><span class="kicker">30-minute bins · AI estimates</span></div>
+    {% if timeline.bins %}
+    <div class="day-timeline" style="grid-template-columns: repeat({{ timeline.bins | length }}, minmax(0, 1fr))">
+      {% for bin in timeline.bins %}<span class="time-bin" role="img" aria-label="{{ bin.description }}" title="{{ bin.description }}" style="--aligned: {{ bin.aligned_pct }}%; --classified: {{ bin.classified_pct }}%"></span>{% endfor %}
+    </div>
+    <div class="time-axis" aria-hidden="true">{% for tick in timeline.ticks %}<span style="left: {{ tick.position }}%">{{ tick.label }}</span>{% endfor %}</div>
+    <div class="timeline-legend"><span><i class="legend-aligned" aria-hidden="true"></i>Aligned</span><span><i class="legend-drift" aria-hidden="true"></i>Drift</span><span><i class="legend-gap" aria-hidden="true"></i>No classified data</span></div>
+    {% if timeline.legacy %}<p class="timeline-note">Older checkpoints use approximate interval boundaries.</p>{% endif %}
+    {% if timeline.timed_min + 0.5 < total %}<p class="timeline-note">The timeline excludes overlaps and minutes without usable time bounds; totals reflect recorded verdicts.</p>{% endif %}
+    {% else %}<p class="empty">{{ 'These older checkpoints have no usable time bounds.' if total else 'Your first successful checkpoint will appear here.' }}</p>{% endif %}
+  </section>
+  {% if goal_allocations %}
+  <section class="intentions" aria-label="Goal time allocation">
+    <div class="section-heading"><h2>Time toward your intentions</h2><span class="kicker">{{ 'Planned vs actual' if goal_allocations | selectattr('target_minutes') | list else 'Time allocation' }}</span></div>
+    {% for goal in goal_allocations %}
+    <div class="goal-row">
+      <div class="goal-heading"><span class="goal-name">{{ goal.goal }}</span><span class="num">{{ goal.actual_label }}{% if goal.target_label %}<span class="goal-target"> / {{ goal.target_label }} planned</span>{% endif %}</span></div>
+      <div class="goal-track" aria-hidden="true"><span style="width: {{ goal.bar_pct }}%"></span></div>
+      <div class="goal-caption"><span>{{ 'Marked done by you' if goal.completed else 'Not marked done' }}</span><span>{% if goal.over_minutes %}{{ goal.over_minutes | duration }} over plan{% elif goal.target_minutes %}Time against your target{% else %}Share of time matched to goals{% endif %}</span></div>
+    </div>
+    {% endfor %}
+    <p class="timeline-note">Time spent does not prove completion. Mark goals done from the notch’s “Review goals…” menu.</p>
+  </section>
   {% endif %}
-
+  <div class="sections">
   {% if categories %}
-  <h2>Where the time went</h2>
+  <details class="report-detail" id="category-detail"><summary>Time by category<span class="chev" aria-hidden="true">+</span></summary>
   <div class="stack" aria-hidden="true">
     {% for c in categories %}<span style="flex: {{ c.minutes }}; background: {{ c.color }}"></span>{% endfor %}
   </div>
@@ -190,37 +250,14 @@
     </div>
     {% endfor %}
   </div>
+  </details>
   {% endif %}
 
-  {% if synthesis.goal_progress %}
-  <h2>Goals</h2>
-  <div class="group">
-    {% for g in synthesis.goal_progress %}
-    <div class="row">
-      <div><div class="g">{{ g.goal }}</div><div class="v">{{ g.verdict }}</div></div>
-      <div class="t num">{{ g.time_min }} min</div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if synthesis.drift %}
-  <h2>Where you drifted</h2>
-  <div class="group">
-    {% for d in synthesis.drift %}
-    <div class="row drift">
-      <span class="drift-dot"></span>
-      <div><div class="g">{{ d.what }}</div><div class="v">{{ d.when }}{% if d.time_min %} · {{ d.time_min }} min{% endif %}</div></div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <h2>Sessions</h2>
+  <details class="report-detail" id="sessions-detail"><summary>Sessions<span class="chev" aria-hidden="true">+</span></summary>
   {% if sessions %}
   <div class="group">
     {% for s in sessions %}
-    <details>
+    <details id="session-{{ loop.index }}">
       <summary>
         <span class="chev" aria-hidden="true">+</span>
         <span class="when num">{{ s.start or "—" }} – {{ s.end or "open" }}</span>
@@ -247,6 +284,17 @@
   <div class="group"><div class="empty">No sessions recorded today.</div></div>
   {% endif %}
 
+  </details>
+  {% if synthesis.coach_verdict or synthesis.tactical_rule or synthesis.tomorrow %}
+  <details class="report-detail" id="reflection-detail"><summary>Daily reflection<span class="chev" aria-hidden="true">+</span></summary>
+  <div class="hero"><p class="headline">{{ synthesis.headline }}</p>{% if synthesis.coach_verdict %}<p class="coach">{{ synthesis.coach_verdict }}</p>{% endif %}</div>
+  {% if synthesis.tactical_rule %}
+  <div class="rule">
+    <div class="t">Rule for tomorrow</div>
+    <div class="b">{{ synthesis.tactical_rule }}</div>
+  </div>
+  {% endif %}
+
   {% if synthesis.tomorrow %}
   <h2>Tomorrow</h2>
   <div class="group tomorrow">
@@ -254,17 +302,38 @@
   </div>
   {% endif %}
 
+  </details>
+  {% endif %}
   </div>
   <aside class="report-note">
     {% if demo %}<strong>DEMO — synthetic activity only.</strong> {% endif %}
     Goal alignment is an AI estimate, not a measure of task completion.
-    {% if offline %}Model synthesis skipped.{% endif %}
+    {% if live %}Checkpoint totals update while tracking. Daily reflection is generated with View report or End day.{% elif offline %}Model synthesis skipped.{% endif %}
     Review before sharing; reports can contain sensitive summaries.
   </aside>
   <footer>
     <span class="footer-brand">A day, accounted for.</span>
-    <span>{% if offline %}Synthetic recorded verdicts{% else %}{{ model_name }} · Local inference{% endif %}<br>FocusLedger · On your Mac.</span>
+    <span>{% if demo %}Synthetic recorded verdicts{% else %}{{ model_name }} · Local inference{% endif %}<br>FocusLedger · On your Mac.</span>
   </footer>
 </main>
+{% if live %}
+<script>
+(() => {
+  const key = 'focusledger:{{ selected_day }}';
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (saved) {
+      for (const id of saved.open || []) { const node = document.getElementById(id); if (node) node.open = true; }
+      requestAnimationFrame(() => window.scrollTo(0, saved.scroll || 0));
+    }
+  } catch (_) {}
+  setInterval(() => {
+    if (document.hidden) return;
+    try { sessionStorage.setItem(key, JSON.stringify({scroll:window.scrollY, open:[...document.querySelectorAll('details[open][id]')].map(node => node.id)})); } catch (_) {}
+    window.location.reload();
+  }, 30000);
+})();
+</script>
+{% endif %}
 </body>
 </html>

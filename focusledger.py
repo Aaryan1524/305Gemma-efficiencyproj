@@ -210,7 +210,7 @@ def run_checkpoint(goals, since=None, until=None, reason=""):
     now = datetime.now()
     end = until or now
     raw_min = (end - since).total_seconds() / 60 if since else (n * POLL_INTERVAL / 60)
-    minutes = max(0.5, round(raw_min, 1))
+    minutes = max(1 / 60, round(raw_min, 3))
     tag = f" ({reason})" if reason else ""
     print(f"🧠 checkpoint{tag}: judging {n} samples with Gemma…")
     try:
@@ -221,14 +221,27 @@ def run_checkpoint(goals, since=None, until=None, reason=""):
     append_ledger({
         "type": "checkpoint",
         "date": (since or now).date().isoformat(),
-        "t": _hms(now),
+        "t": _hms(end),
+        "start_at": (since or (end - timedelta(minutes=minutes))).isoformat(),
+        "end_at": end.isoformat(),
+        "recorded_at": now.isoformat(),
         "samples": n,
         "minutes": minutes,
         "verdict": verdict,
     })
     BUFFER.clear()
     print("📒 verdict recorded")
+    refresh_report((since or now).date().isoformat())
     return True
+
+
+def refresh_report(day=None, live=True):
+    """Report I/O failure must never discard or retry an already saved verdict."""
+    try:
+        import report
+        report.refresh_live(LEDGER_PATH, day=day, live=live)
+    except Exception:
+        print('FL_REPORT_FAILED', flush=True)
 
 
 def main():
@@ -266,6 +279,7 @@ def main():
                     continue
                 if session:
                     append_ledger({"type": "session_close", "date": tracking_day.isoformat(), "t": "24:00:00", "duration": _duration(session["start"], boundary)})
+                refresh_report(tracking_day.isoformat(), live=False)
                 print("FL_DAY_ENDED", flush=True)
                 return
             idle = idle_seconds()
@@ -327,6 +341,7 @@ def main():
             dur = _duration(session["start"], now)
             append_ledger({"type": "session_close", "t": _hms(now), "duration": dur})
             print(f"\n■ session closed {_hms(now)} (duration {dur})")
+        refresh_report(tracking_day.isoformat(), live=False)
         print("FocusLedger stopped.")
 
 

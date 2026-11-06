@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add three headline metrics, personal baselines, a timeline with explicit gaps,
+  and per-goal time bars with optional morning budgets and manual completion.
+- Regenerate live report facts after saved checkpoints; refresh open live pages
+  every 30 seconds and keep final, historical, and demo reports frozen.
+- Remove unsupported strain and switching proxies; record explicit interval bounds.
+
 - Redesign the native notch and daily report with Geist, Instrument Serif, warm
   paper/ink palettes, muted accents, and a minimal editorial hierarchy.
 - Bundle OFL fonts locally and embed fonts/licenses in standalone reports.

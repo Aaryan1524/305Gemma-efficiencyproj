@@ -20,6 +20,8 @@ class AlphaTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         fl.BUFFER.clear()
+        self.refresh = patch.object(fl, "refresh_report").start()
+        self.addCleanup(patch.stopall)
         fl._last_hash = None
         self.addCleanup(fl.BUFFER.clear)
 
@@ -54,7 +56,7 @@ class AlphaTests(unittest.TestCase):
         html = out.read_text()
         self.assertNotIn('No activity recorded today.', html)
         self.assertNotIn('Goals met', html)
-        self.assertIn('Time in drift', html)
+        self.assertTrue('Drift' in html)
 
     def test_report_fonts_travel_with_exported_html(self):
         data = report.build_report(paths.BASE / 'ledger.sample.jsonl', demo=True, offline=True)
